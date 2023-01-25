@@ -21,6 +21,6 @@ SED_LINE_INDEX=$((${SLURM_ARRAY_TASK_ID}+1))
 input_line=$(sed -n ${SED_LINE_INDEX}p $input_file | sed -e's/  */ /g')
 echo "-I- Input line >>$input_line<<"
 
-time python lofar_bootes_ss_cpp.py $input_line
+time python lofar_bootes_ss_bipp.py $input_line
 
 source /home/orliac/SKA/ska-spack-env/env-bipp-izar/deactivate.sh

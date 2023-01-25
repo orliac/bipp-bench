@@ -33,9 +33,9 @@ ls -l
 
 SBATCH_SH=sbatch_bipp_izar.sh
 
-cp -v lofar_bootes_ss_cpp.py $in_dir
-cp -v $SBATCH_SH             $in_dir
-cp -v bipptb.py              $in_dir
+cp -v lofar_bootes_ss_bipp.py $in_dir
+cp -v $SBATCH_SH              $in_dir
+cp -v bipptb.py               $in_dir
 
 cd $in_dir
 ls -l

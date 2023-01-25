@@ -10,8 +10,8 @@ BIPP_ROOT=${SCRIPT_DIR}/bipp-izar
 echo BIPP_ROOT = $BIPP_ROOT
 
 
-[ -d $BIPP_ROOT ] && rm -rf ${BIPP_ROOT}
-git clone https://github.com/epfl-radio-astro/bipp.git bipp-izar
+#[ -d $BIPP_ROOT ] && rm -rf ${BIPP_ROOT}
+#git clone https://github.com/epfl-radio-astro/bipp.git bipp-izar
 [ -d $BIPP_ROOT ] || (echo "-E- bipp root directory does not exist" && exit 1)
 
 source ~/SKA/ska-spack-env/env-bipp-izar/activate.sh
@@ -24,6 +24,8 @@ if [ 1 == 1 ]; then
     EGGINFO=${BIPP_ROOT}/python/bipp.egg-info/; [ -d $EGGINFO ] && rm -r $EGGINFO
     python3 -m pip uninstall -y bipp
     #export BIPP_CMAKE_ARGS="-DBLUEBILD_BUILD_TYPE=RelWithDebInfo "
+    #export CUDAFLAGS="-g -G"
+    export BIPP_VC=ON
     BIPP_GPU=CUDA python3 -m pip install --user --verbose --no-deps --no-build-isolation ${BIPP_ROOT}
 fi
 
