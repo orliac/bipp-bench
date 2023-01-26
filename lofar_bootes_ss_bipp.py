@@ -65,7 +65,6 @@ FoV, frequency = np.deg2rad(FoV_deg), 145e6
 wl = constants.speed_of_light / frequency
 
 # Instrument
-
 dev = instrument.LofarBlock(N_station)
 mb_cfg = [(_, _, field_center) for _ in range(N_station)]
 mb = beamforming.MatchedBeamformerBlock(mb_cfg)
@@ -73,9 +72,9 @@ gram = bb_gr.GramBlock(ctx)
 
 # Data generation
 T_integration = 8
-N_src     = 40
-fs        = 196000
-SNR       = 30
+N_src         = 40
+fs            = 196000
+SNR           = 30
 sky_model = source.from_tgss_catalog(field_center, FoV, N_src=N_src)
 vis       = statistics.VisibilityGeneratorBlock(
     sky_model, T_integration, fs=fs, SNR=SNR
@@ -101,10 +100,12 @@ print(f"-I- Field of view =", FoV_deg, "deg")
 print(f"-I- frequency =", frequency)
 print(f"-I- SNR =", SNR)
 print(f"-I- fs =", fs)
+print(f"-I- time_slice =", time_slice)
 print(f"-I- OMP_NUM_THREADS =", os.getenv('OMP_NUM_THREADS'))
 
 
 ### Intensity Field ===========================================================
+
 # Parameter Estimation
 ifpe_s = time.time()
 ifpe_vis = 0
@@ -120,9 +121,6 @@ for t in times:
 N_eig, intensity_intervals = I_est.infer_parameters()
 ifpe_e = time.time()
 print(f"#@#IFPE {ifpe_e - ifpe_s:.3f} sec")
-
-print("-I- N_eig =\n", N_eig)
-print("-I- intensity_intervals =\n", intensity_intervals)
 
 # Imaging
 ifim_s = time.time()
@@ -150,8 +148,6 @@ I_lsq = imager.get("LSQ").reshape((-1, px_w, px_h))
 I_std = imager.get("STD").reshape((-1, px_w, px_h))
 ifim_e = time.time()
 print(f"#@#IFIM {ifim_e - ifim_s:.3f} sec")
-
-print(I_lsq)
 
 
 ### Sensitivity Field =========================================================
@@ -182,17 +178,13 @@ imager = bipp.StandardSynthesis(
     xyz_grid[2],
     precision,
 )
-
 for t in times:
     XYZ = dev(t)
     W = mb(XYZ, wl)
     imager.collect(N_eig, wl, sensitivity_intervals, W.data, XYZ.data)
-
 sensitivity_image = imager.get("INV_SQ").reshape((-1, px_w, px_h))
-
 I_std_eq = s2image.Image(I_std / sensitivity_image, xyz_grid.reshape(3, px_w, px_h))
 I_lsq_eq = s2image.Image(I_lsq / sensitivity_image, xyz_grid.reshape(3, px_w, px_h))
-
 sfim_e = time.time()
 print(f"#@#SFIM {sfim_e - sfim_s:.3f} sec")
 
@@ -205,7 +197,12 @@ if os.getenv('BB_EARLY_EXIT') == "1":
     print("-I- early exit signal detected")
     sys.exit(0)
 
-print(I_lsq_eq.data)
+print("######################################################################")
+print("-I- N_eig =\n", N_eig)
+print("-I- intensity_intervals =\n", intensity_intervals, "\n")
+print("-I- xyz_grid:", xyz_grid.shape, "\n", xyz_grid, "\n")
+print("-I- I_lsq:\n", I_lsq, "\n")
+print("-I- I_lsq_eq:\n", I_lsq_eq.data, "\n")
 
 if not os.path.exists(out_dir):
     os.makedirs(out_dir)

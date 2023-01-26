@@ -8,7 +8,7 @@ module load gcc python
 # Generate benchmark input file
 outdir="/work/ska/orliac/benchmarks"
 bench_name=bench02
-package=bipp
+package=pypeline
 cluster=izar
 proc_unit=gpu
 compiler=cuda
@@ -34,11 +34,11 @@ ls -l
 
 module purge
 
-SBATCH_SH=sbatch_bipp_izar.sh
+SBATCH_SH=sbatch_pypeline_izar.sh
 
-cp -v lofar_bootes_ss_bipp.py $in_dir
-cp -v $SBATCH_SH              $in_dir
-cp -v bipptb.py               $in_dir
+cp -v lofar_bootes_ss_pypeline.py $in_dir
+cp -v $SBATCH_SH                  $in_dir
+cp -v bipptb.py                   $in_dir
 
 cd $in_dir
 ls -l

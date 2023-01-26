@@ -23,39 +23,70 @@ from pypeline.util import frame
 from mpl_toolkits.mplot3d import Axes3D
 import imot_tools.io.s2image as im
 import imot_tools.io.plot as implt
-import bb_tb
 
+import bipptb
 
-args = bb_tb.check_args(sys.argv)
+# Setting up the benchmark
+args = bipptb.check_args(sys.argv)
+print("-I- args =", args)
+proc_unit = args.processing_unit
+precision = args.precision
+N_station = args.nsta   #  24
+N_pix     = args.pixw   # 512
+N_levels  = args.nlev   #   3
+out_dir   = args.outdir 
+print("-I- Command line input -----------------------------")
+print("-I- precision =", precision)
+print("-I- N_station =", N_station)
+print("-I- proc unit =", proc_unit)
+print("-I- N_pix     =", N_pix)
+print("-I- N_levels  =", N_levels)
+print("-I- outdir    =", out_dir)
+print("-I- ------------------------------------------------")
 
+N_bits   = 32 if args.precision == 'single' else 64
+dtype_f  = np.float32 if N_bits == 32 else np.float64
+
+# For reproducible results
 np.random.seed(0)
 
+# Create context with selected processing unit.
+# Options are "NONE", "AUTO", "CPU" and "GPU".
+bb_proc_unit = None
+if proc_unit == 'cpu':
+    bb_proc_unit = bluebild.ProcessingUnit.CPU
+elif proc_unit == 'gpu':
+    bb_proc_unit = bluebild.ProcessingUnit.GPU
+ctx = None if proc_unit == None else bluebild.Context(bb_proc_unit)
 
 jkt0_s = time.time()
 
 # Observation
 obs_start = atime.Time(56879.54171302732, scale="utc", format="mjd")
 field_center = coord.SkyCoord(ra=218 * u.deg, dec=34.5 * u.deg, frame="icrs")
-FoV, frequency = np.deg2rad(8), 145e6
+FoV_deg = 8.0
+FoV, frequency = np.deg2rad(FoV_deg), 145e6
 wl = constants.speed_of_light / frequency
 
 # Instrument
-N_station = 24
 dev = instrument.LofarBlock(N_station)
 mb_cfg = [(_, _, field_center) for _ in range(N_station)]
 mb = beamforming.MatchedBeamformerBlock(mb_cfg)
+gram = bb_gr.GramBlock(ctx)
 
 # Data generation
 T_integration = 8
-sky_model = source.from_tgss_catalog(field_center, FoV, N_src=40)
-vis = statistics.VisibilityGeneratorBlock(sky_model, T_integration, fs=196000, SNR=30)
-times = obs_start + (T_integration * u.s) * np.arange(3595)
+N_src         = 40
+fs            = 196000
+SNR           = 30
+sky_model = source.from_tgss_catalog(field_center, FoV, N_src=N_src)
+vis       = statistics.VisibilityGeneratorBlock(
+    sky_model, T_integration, fs=fs, SNR=SNR
+)
+times     = obs_start + (T_integration * u.s) * np.arange(3595)
+N_antenna = dev(times[0]).data.shape[0]
 
 # Imaging parameters
-N_pix    = 512
-N_levels = 3
-N_bits   = 32 if args.precision == 'single' else 64
-dtype_f  = np.float32 if N_bits == 32 else np.float64
 time_slice = 200
 times = times[::time_slice]
 
@@ -67,27 +98,35 @@ n_grid = np.sqrt(1 - l_grid ** 2 - m_grid ** 2)  # No -1 if r on the sphere !
 lmn_grid = np.stack((l_grid, m_grid, n_grid), axis=0)
 uvw_frame = frame.uvw_basis(field_center)
 px_grid = np.tensordot(uvw_frame, lmn_grid, axes=1)
+px_w = px_grid.shape[1]
+px_h = px_grid.shape[2]
 
-print("\nImaging parameters")
-print(f'N_pix {N_pix}\nN_levels {N_levels}\nN_bits {N_bits}')
-print(f'time_slice {time_slice}')
-
-print("-I- processing unit:", args.processing_unit)
-ctx = None if args.processing_unit == None else bluebild.Context(args.processing_unit)
-
-gram = bb_gr.GramBlock(ctx)
+print(f"-I- N_bits {N_bits}")
+print(f"-I- px_w = {px_w:d}, px_h = {px_h:d}")
+print(f"-I- N_antenna = {N_antenna:d}")
+print(f"-I- T_integration =", T_integration)
+print(f"-I- Field center  =", field_center)
+print(f"-I- Field of view =", FoV_deg, "deg")
+print(f"-I- frequency =", frequency)
+print(f"-I- SNR =", SNR)
+print(f"-I- fs =", fs)
+print(f"-I- time_slice =", time_slice)
+print(f"-I- OMP_NUM_THREADS =", os.getenv('OMP_NUM_THREADS'))
 
 
 ### Intensity Field ===========================================================
 
 # Parameter Estimation
 ifpe_s = time.time()
+ifpe_vis = 0
 I_est = bb_pe.IntensityFieldParameterEstimator(N_levels, sigma=0.95)
 for t in times:
     XYZ = dev(t)
     W = mb(XYZ, wl)
-    G = gram(XYZ, W, wl)
+    t_ss = time.time()
     S = vis(XYZ, W, wl)
+    ifpe_vis += (time.time() - t_ss)
+    G = gram(XYZ, W, wl)
     I_est.collect(S, G)
 N_eig, c_centroid = I_est.infer_parameters()
 ifpe_e = time.time()
@@ -95,6 +134,7 @@ print(f"#@#IFPE {ifpe_e - ifpe_s:.3f} sec")
 
 # Imaging
 ifim_s = time.time()
+ifim_vis = 0
 I_dp = bb_dp.IntensityFieldDataProcessorBlock(N_eig, c_centroid, ctx) #EO: bug in C++ version???
 #I_dp = bb_dp.IntensityFieldDataProcessorBlock(N_eig, c_centroid, ctx=None)
 I_mfs = bb_sd.Spatial_IMFS_Block(wl, px_grid, N_levels, N_bits, ctx)
@@ -102,13 +142,14 @@ for t in times:
     d2h = True if t == times[-1] else False
     XYZ = dev(t)
     W = mb(XYZ, wl)
+    t_ss = time.time()
     S = vis(XYZ, W, wl)
+    ifim_vis += (time.time() - t_ss)
     D, V, c_idx = I_dp(S, XYZ, W, wl)
     I_mfs(D, V, XYZ.data, W.data, c_idx, d2h)
 I_std, I_lsq = I_mfs.as_image()
 ifim_e = time.time()
 print(f"#@#IFIM {ifim_e - ifim_s:.3f} sec")
-
 
 ### Sensitivity Field =========================================================
 # Parameter Estimation
@@ -148,10 +189,22 @@ if os.getenv('BB_EARLY_EXIT') == "1":
     print("-I- early exit signal detected")
     sys.exit(0)
 
+print("######################################################################")
+print("-I- N_eig =\n", N_eig)
+print("-I- c_centroid =\n", c_centroid, "\n")
+print("-I- px_grid:", px_grid.shape, "\n", px_grid, "\n")
+print("-I- I_lsq:\n", I_lsq.data, "\n")
+print("-I- I_lsq_eq:\n", I_lsq_eq.data, "\n")
 
-bb_tb.dump_data(I_lsq_eq.data, 'I_lsq_eq_data', args.outdir)
-bb_tb.dump_data(I_lsq_eq.grid, 'I_lsq_eq_grid', args.outdir)
+if not os.path.exists(out_dir):
+    os.makedirs(out_dir)
 
+bipptb.dump_data(I_lsq_eq.data, 'I_lsq_eq_data', args.outdir)
+bipptb.dump_data(I_lsq_eq.grid, 'I_lsq_eq_grid', args.outdir)
+
+bipptb.dump_json((ifpe_e - ifpe_s), ifpe_vis, (ifim_e - ifim_s), ifim_vis,
+                 (sfpe_e - sfpe_s), (sfim_e - sfim_s),
+                 'stats.json', out_dir)
 
 ### Plotting section
 plt.figure()
