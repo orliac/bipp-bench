@@ -3,8 +3,9 @@
 #SBATCH --array 0-1
 #SBATCH --mem 80G
 #SBATCH --cpus-per-task 20
-#SBATCH --partition build
+#SBATCH --partition gpu
 #SBATCH --gres gpu:1
+#SBATCH --time 00-00:15:00
 
 # /!\ File expected to be copied where benchmark.in to be run resides
 

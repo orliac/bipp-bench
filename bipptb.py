@@ -83,14 +83,15 @@ def check_args(args_in):
     parser.add_argument("--cluster", help="Cluster on which to run the benchmark",
                         choices=['izar', 'jed'], required=True)
     parser.add_argument("--compiler", help="Compiler to use",
-                        choices=['cuda', 'rocm', 'gcc', 'intel'],
-                        required=True)
+                        choices=['cuda', 'rocm', 'gcc', 'intel'], required=True)
     parser.add_argument("--outdir", help="Path to dumping location (no dumps if not set)",
                         required=True)
     parser.add_argument("--processing_unit",  help="Bluebild processing unit (for ctx definition)",
                         choices=['auto', 'cpu', 'gpu', 'none'], required=True)
     parser.add_argument("--precision", help="Floating point calculation precision",
                         choices=['single', 'double'], default='double')
+    parser.add_argument("--package", help="Package to run, either bipp or pypeline",
+                        choices=['bipp', 'pypeline'], required=True)
     parser.add_argument("--nsta", help="Number of stations in simulation",
                         required=True, type=int)
     parser.add_argument("--nlev", help="Number of energy levels in simulation",
@@ -107,8 +108,8 @@ def check_args(args_in):
     else:
         print("-W- will not dump anything since --outdir was not set")
     """
-    if args.processing_unit == 'none':
-        print('-E- processing unit cannot be \'none\'.')
+    if args.package == "bipp" and args.processing_unit == 'none':
+        print('-E- bipp processing unit cannot be none.')
         sys.exit(1)
 
     return args

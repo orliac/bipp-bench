@@ -57,7 +57,7 @@ if proc_unit == 'cpu':
     bb_proc_unit = bluebild.ProcessingUnit.CPU
 elif proc_unit == 'gpu':
     bb_proc_unit = bluebild.ProcessingUnit.GPU
-ctx = None if proc_unit == None else bluebild.Context(bb_proc_unit)
+ctx = None if proc_unit == 'none' else bluebild.Context(bb_proc_unit)
 
 jkt0_s = time.time()
 
