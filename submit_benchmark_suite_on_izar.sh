@@ -9,8 +9,14 @@ set -e
 # ! Use "|" as a separtor between options
 # ! Use "=" to pass value of Slurm option: --opt-name=value and not --opt-name value
 # White spaces are making problems, check that
-SLURM_OPTS_IZAR="--partition=gpu|--gres=gpu:1|--time=00-00:15:00|--cpus-per-task=20|--array=0-1"
+SLURM_OPTS_IZAR="--partition=gpu|--gres=gpu:2|--time=03-00:00:00|--cpus-per-task=40|--mem=180G|--array=0-195"
 
-sh submit_benchmarks_generic.sh --slurm-opts "$SLURM_OPTS_IZAR" --bench-name abc --package pypeline --cluster izar --proc-unit none --compiler gcc
-#sh submit_benchmarks_generic.sh --bench-name abc --package pypeline --cluster izar --proc-unit gpu  --compiler cuda 
-#sh submit_benchmarks_generic.sh --bench-name abc --package pypeline --cluster izar --proc-unit cpu  --compiler gcc
+BENCH_NAME=bench00
+
+# pypeline @ none, gpu, cpu
+sh submit_benchmarks_generic.sh --slurm-opts "$SLURM_OPTS_IZAR" --bench-name $BENCH_NAME --package pypeline --cluster izar --proc-unit none --compiler gcc  --algo ss
+#sh submit_benchmarks_generic.sh --slurm-opts "$SLURM_OPTS_IZAR" --bench-name $BENCH_NAME --package pypeline --cluster izar --proc-unit gpu  --compiler cuda --algo ss
+#sh submit_benchmarks_generic.sh --slurm-opts "$SLURM_OPTS_IZAR" --bench-name $BENCH_NAME --package pypeline --cluster izar --proc-unit cpu  --compiler gcc  --algo ss 
+# bipp @ gpu, cpu
+#sh submit_benchmarks_generic.sh --slurm-opts "$SLURM_OPTS_IZAR" --bench-name $BENCH_NAME --package bipp     --cluster izar --proc-unit gpu  --compiler cuda --algo ss
+#sh submit_benchmarks_generic.sh --slurm-opts "$SLURM_OPTS_IZAR" --bench-name $BENCH_NAME --package bipp     --cluster izar --proc-unit cpu  --compiler gcc  --algo ss

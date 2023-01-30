@@ -3,7 +3,7 @@
 set -e
 
 # options may be followed by one colon to indicate they have a required argument
-if ! options=$(getopt -u -o "" -l bench-name:,package:,proc-unit:,compiler:,cluster:,slurm-opts: -- "$@")
+if ! options=$(getopt -u -o "" -l bench-name:,package:,proc-unit:,compiler:,cluster:,slurm-opts:,algo: -- "$@")
 then
     # something went wrong, getopt will put out an error message for us
     exit 1
@@ -20,6 +20,7 @@ do
         --compiler)   compiler="$2";   shift;;
         --cluster)    cluster="$2";    shift;;
         --slurm-opts) slurm_opts="$2"; shift;;
+        --algo)       algo="$2";       shift;;
         (--) shift; break;;
         (-*) echo "$0: error - unrecognized option $1" 1>&2; exit 1;;
         (*) break;;
@@ -33,6 +34,7 @@ done
 : ${compiler:?Missing mandatory --compiler option to specify the compiler [gcc, cuda]}
 : ${cluster:?Missing mandatory --cluster option to specify the compiler [izar, jed]}
 : ${slurm_opts:?Missing mandatory --slurm-opts}
+: ${algo:?Missing mandatory --algo [ss, nufft]}
 
 if [ "$package" != "bipp" ] && [ "$package" != "pypeline" ]; then
     echo "-E- Only packages bipp and pypeline are allowed"
@@ -71,7 +73,7 @@ module purge
 module load gcc python
 OUTDIR="/work/ska/orliac/benchmarks"
 PRECISION="double"
-out_dir="$OUTDIR/$bench_name/$package/$cluster/$proc_unit/$compiler/$PRECISION"
+out_dir="$OUTDIR/$bench_name/$package/$cluster/$proc_unit/$compiler/$PRECISION/$algo"
 [ ! -d $out_dir ] && mkdir -pv $out_dir
 in_file="$out_dir/benchmark.in"
 python generate_benchmark_input_file.py --bench_name=$bench_name --proc_unit=$proc_unit \
@@ -90,13 +92,16 @@ SBATCH_SH=sbatch_generic.sh
 [ -f $SBATCH_SH ] || (echo "-E- Template submission file for $package on $cluster \
 >>$SBATCH_SH<< not found" && exit 1)
 
-cp -v lofar_bootes_ss_${package}.py $out_dir
-cp -v $SBATCH_SH                    $out_dir
-cp -v bipptb.py                     $out_dir
+cp -v lofar_bootes_${algo}_${package}.py $out_dir
+cp -v $SBATCH_SH                         $out_dir
+cp -v bipptb.py                          $out_dir
 
 cd $out_dir
 
 slurm_opts=$(sed "s/|/ /g" <<< $slurm_opts)
+echo
+echo "slurm_opts >>$slurm_opts<<"
+echo
 
 sbatch $slurm_opts $SBATCH_SH --cluster $cluster --package $package
 
