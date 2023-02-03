@@ -11,7 +11,7 @@ SCRIPT_DIR=$( cd -- "$( dirname -- "${BASH_SOURCE[0]}" )" &> /dev/null && pwd )
 
 cd $SCRIPT_DIR
 
-CLUSTER=izar
+CLUSTER=jed
 PACKAGE=pypeline
 
 PACKAGE_NAME="${PACKAGE}-${CLUSTER}"
@@ -27,8 +27,8 @@ fi
 
 [ -d $PACKAGE_ROOT ] || (echo "-E- ${PACKAGE_ROOT} directory does not exist" && exit 1)
 
-# Activate Spack environment for izar
-source ~/SKA/ska-spack-env/env-bipp-izar/activate.sh
+# Activate Spack environment for jed
+source ~/SKA/ska-spack-env/bipp-jed-gcc/activate.sh
 python -V
 
 # Just in case, remove pypeline & bluebild from outside any virtual env
@@ -36,7 +36,7 @@ python -m pip uninstall -y bluebild
 python -m pip uninstall -y pypeline
 
 # Create a Python virtual environment
-VENV=VENV_IZARGCC
+VENV=VENV_JEDGCC
 python -m venv $VENV
 source $VENV/bin/activate
 
@@ -61,6 +61,6 @@ echo "-I- test [python -c \"import bluebild\"] successful"
 
 deactivate
 
-source ~/SKA/ska-spack-env/env-bipp-izar/deactivate.sh
+source ~/SKA/ska-spack-env/bipp-jed-gcc/deactivate.sh
 
 cd -
