@@ -35,9 +35,9 @@ args = bipptb.check_args(sys.argv)
 print("-I- args =", args)
 proc_unit = args.processing_unit
 precision = args.precision
-N_station = args.nsta   #  24
-N_pix     = args.pixw   # 512
-N_levels  = args.nlev   #   3
+N_station = args.nsta
+N_pix     = args.pixw
+N_levels  = args.nlev
 out_dir   = args.outdir 
 print("-I- Command line input -----------------------------")
 print("-I- precision =", precision)
@@ -83,8 +83,9 @@ times     = obs_start + (T_integration * u.s) * np.arange(3595)
 N_antenna = dev(times[0]).data.shape[0]
 
 # Imaging parameters
-time_slice = 200
+time_slice = 2000
 times = times[::time_slice]
+SIGMA = 1.0
 
 # Grids
 lmn_grid, xyz_grid = frame.make_grids(N_pix, FoV, field_center)
@@ -92,6 +93,7 @@ px_w = xyz_grid.shape[1]
 px_h = xyz_grid.shape[2]
 xyz_grid = xyz_grid.reshape(3, -1)
 
+print(f"-I- sigma = {SIGMA:.3f}")
 print(f"-I- px_w = {px_w:d}, px_h = {px_h:d}")
 print(f"-I- N_antenna = {N_antenna:d}")
 print(f"-I- T_integration =", T_integration)
@@ -109,7 +111,7 @@ print(f"-I- OMP_NUM_THREADS =", os.getenv('OMP_NUM_THREADS'))
 # Parameter Estimation
 ifpe_s = time.time()
 ifpe_vis = 0
-I_est = bb_pe.IntensityFieldParameterEstimator(N_levels, sigma=0.95, ctx=ctx)
+I_est = bb_pe.IntensityFieldParameterEstimator(N_levels, sigma=SIGMA, ctx=ctx)
 for t in times:
     XYZ = dev(t)
     W = mb(XYZ, wl)
@@ -119,6 +121,7 @@ for t in times:
     G = gram(XYZ, W, wl)
     I_est.collect(S, G)
 N_eig, intensity_intervals = I_est.infer_parameters()
+print("-I- IFPE N_eig =", N_eig)
 ifpe_e = time.time()
 print(f"#@#IFPE {ifpe_e - ifpe_s:.3f} sec")
 
@@ -135,17 +138,22 @@ imager = bipp.StandardSynthesis(
     xyz_grid[1],
     xyz_grid[2],
     precision)
-
+i_it = 0
 for t in times:
+    t_it = time.time()
     XYZ = dev(t)
     W = mb(XYZ, wl)
     t_ss = time.time()
     S = vis(XYZ, W, wl)
     ifim_vis += (time.time() - t_ss)
     imager.collect(N_eig, wl, intensity_intervals, W.data, XYZ.data, S.data)
-
+    t_it = time.time() - t_it
+    print(f" ... ifim t_it {i_it} {t_it:.3f} sec")
+    i_it += 1
 I_lsq = imager.get("LSQ").reshape((-1, px_w, px_h))
+print("I_lsq.shape =", I_lsq.shape)
 I_std = imager.get("STD").reshape((-1, px_w, px_h))
+print("I_std.shape =", I_std.shape)
 ifim_e = time.time()
 print(f"#@#IFIM {ifim_e - ifim_s:.3f} sec")
 
@@ -153,13 +161,14 @@ print(f"#@#IFIM {ifim_e - ifim_s:.3f} sec")
 ### Sensitivity Field =========================================================
 # Parameter Estimation
 sfpe_s = time.time()
-S_est = bb_pe.SensitivityFieldParameterEstimator(sigma=0.95, ctx=ctx)
+S_est = bb_pe.SensitivityFieldParameterEstimator(sigma=SIGMA, ctx=ctx)
 for t in times:
     XYZ = dev(t)
     W = mb(XYZ, wl)
     G = gram(XYZ, W, wl)
     S_est.collect(G)
 N_eig = S_est.infer_parameters()
+print("-I- SFPE N_eig =", N_eig)
 sfpe_e = time.time()
 print(f"#@#SFPE {sfpe_e - sfpe_s:.3f} sec")
 
@@ -178,19 +187,25 @@ imager = bipp.StandardSynthesis(
     xyz_grid[2],
     precision,
 )
+i_it = 0
 for t in times:
+    t_it = time.time()
     XYZ = dev(t)
     W = mb(XYZ, wl)
     imager.collect(N_eig, wl, sensitivity_intervals, W.data, XYZ.data)
+    t_it = time.time() - t_it
+    print(f" ... sfim t_it {i_it} {t_it:.3f} sec")
+    i_it += 1
 sensitivity_image = imager.get("INV_SQ").reshape((-1, px_w, px_h))
+print("-I- sensitivity_image.shape =", sensitivity_image.shape)
 I_std_eq = s2image.Image(I_std / sensitivity_image, xyz_grid.reshape(3, px_w, px_h))
 I_lsq_eq = s2image.Image(I_lsq / sensitivity_image, xyz_grid.reshape(3, px_w, px_h))
+print("-I- I_std_eq.shape =", I_std_eq.shape)
 sfim_e = time.time()
 print(f"#@#SFIM {sfim_e - sfim_s:.3f} sec")
 
 jkt0_e = time.time()
 print(f"#@#TOT {jkt0_e - jkt0_s:.3f} sec\n")
-
 
 #EO: early exit when profiling
 if os.getenv('BB_EARLY_EXIT') == "1":
@@ -198,7 +213,6 @@ if os.getenv('BB_EARLY_EXIT') == "1":
     sys.exit(0)
 
 print("######################################################################")
-print("-I- N_eig =\n", N_eig)
 print("-I- intensity_intervals =\n", intensity_intervals, "\n")
 print("-I- xyz_grid:", xyz_grid.shape, "\n", xyz_grid, "\n")
 print("-I- I_lsq:\n", I_lsq, "\n")

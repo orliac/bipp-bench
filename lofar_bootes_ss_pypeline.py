@@ -1,3 +1,13 @@
+# #############################################################################
+# lofar_bootes_ss.py
+# ==================
+# Author : Sepand KASHANI [kashani.sepand@gmail.com]
+# #############################################################################
+
+"""
+Simulated LOFAR imaging with pypeline (StandardSynthesis).
+"""
+
 import os
 import sys
 import time
@@ -31,9 +41,9 @@ args = bipptb.check_args(sys.argv)
 print("-I- args =", args)
 proc_unit = args.processing_unit
 precision = args.precision
-N_station = args.nsta   #  24
-N_pix     = args.pixw   # 512
-N_levels  = args.nlev   #   3
+N_station = args.nsta
+N_pix     = args.pixw
+N_levels  = args.nlev
 out_dir   = args.outdir 
 print("-I- Command line input -----------------------------")
 print("-I- precision =", precision)
@@ -87,10 +97,11 @@ times     = obs_start + (T_integration * u.s) * np.arange(3595)
 N_antenna = dev(times[0]).data.shape[0]
 
 # Imaging parameters
-time_slice = 200
+time_slice = 2000
 times = times[::time_slice]
+SIGMA = 1.0
 
-# Grid
+# Grids
 lim = np.sin(FoV / 2)
 grid_slice = np.linspace(-lim, lim, N_pix)
 l_grid, m_grid = np.meshgrid(grid_slice, grid_slice)
@@ -101,6 +112,7 @@ px_grid = np.tensordot(uvw_frame, lmn_grid, axes=1)
 px_w = px_grid.shape[1]
 px_h = px_grid.shape[2]
 
+print(f"-I- sigma = {SIGMA:.3f}")
 print(f"-I- N_bits {N_bits}")
 print(f"-I- px_w = {px_w:d}, px_h = {px_h:d}")
 print(f"-I- N_antenna = {N_antenna:d}")
@@ -119,7 +131,7 @@ print(f"-I- OMP_NUM_THREADS =", os.getenv('OMP_NUM_THREADS'))
 # Parameter Estimation
 ifpe_s = time.time()
 ifpe_vis = 0
-I_est = bb_pe.IntensityFieldParameterEstimator(N_levels, sigma=0.95)
+I_est = bb_pe.IntensityFieldParameterEstimator(N_levels, sigma=SIGMA)
 for t in times:
     XYZ = dev(t)
     W = mb(XYZ, wl)
@@ -129,6 +141,7 @@ for t in times:
     G = gram(XYZ, W, wl)
     I_est.collect(S, G)
 N_eig, c_centroid = I_est.infer_parameters()
+print("-I- IFPE N_eig =", N_eig)
 ifpe_e = time.time()
 print(f"#@#IFPE {ifpe_e - ifpe_s:.3f} sec")
 
@@ -138,7 +151,9 @@ ifim_vis = 0
 I_dp = bb_dp.IntensityFieldDataProcessorBlock(N_eig, c_centroid, ctx) #EO: bug in C++ version???
 #I_dp = bb_dp.IntensityFieldDataProcessorBlock(N_eig, c_centroid, ctx=None)
 I_mfs = bb_sd.Spatial_IMFS_Block(wl, px_grid, N_levels, N_bits, ctx)
+i_it = 0
 for t in times:
+    t_it = time.time()
     d2h = True if t == times[-1] else False
     XYZ = dev(t)
     W = mb(XYZ, wl)
@@ -147,14 +162,20 @@ for t in times:
     ifim_vis += (time.time() - t_ss)
     D, V, c_idx = I_dp(S, XYZ, W, wl)
     I_mfs(D, V, XYZ.data, W.data, c_idx, d2h)
+    t_it = time.time() - t_it
+    print(f" ... ifim t_it {i_it} {t_it:.3f} sec")
+    i_it += 1
 I_std, I_lsq = I_mfs.as_image()
+print("I_lsq.shape =", I_lsq.shape)
+print("I_std.shape =", I_std.shape)
 ifim_e = time.time()
 print(f"#@#IFIM {ifim_e - ifim_s:.3f} sec")
+
 
 ### Sensitivity Field =========================================================
 # Parameter Estimation
 sfpe_s = time.time()
-S_est = bb_pe.SensitivityFieldParameterEstimator(sigma=0.95)
+S_est = bb_pe.SensitivityFieldParameterEstimator(sigma=SIGMA)
 for t in times:
     XYZ = dev(t)
     W = mb(XYZ, wl)
@@ -168,12 +189,17 @@ print(f"#@#SFPE {sfpe_e - sfpe_s:.3f} sec")
 sfim_s = time.time()
 S_dp  = bb_dp.SensitivityFieldDataProcessorBlock(N_eig, ctx)
 S_mfs = bb_sd.Spatial_IMFS_Block(wl, px_grid, 1, N_bits, ctx)
+i_it = 0
 for t in times:
+    t_it = time.time()
     XYZ = dev(t)
     W = mb(XYZ, wl)
     D, V = S_dp(XYZ, W, wl)
     UVW_baselines_t = dev.baselines(t, uvw=True, field_center=field_center)
     _ = S_mfs(D, V, XYZ.data, W.data, cluster_idx=np.zeros(N_eig, dtype=int))
+    t_it = time.time() - t_it
+    print(f" ... sfim t_it {i_it} {t_it:.3f} sec")
+    i_it += 1
 _, S_ss = S_mfs.as_image()
 I_std_eq = s2image.Image(I_std.data / S_ss.data, I_lsq.grid)
 I_lsq_eq = s2image.Image(I_lsq.data / S_ss.data, I_lsq.grid)
@@ -190,7 +216,6 @@ if os.getenv('BB_EARLY_EXIT') == "1":
     sys.exit(0)
 
 print("######################################################################")
-print("-I- N_eig =\n", N_eig)
 print("-I- c_centroid =\n", c_centroid, "\n")
 print("-I- px_grid:", px_grid.shape, "\n", px_grid, "\n")
 print("-I- I_lsq:\n", I_lsq.data, "\n")
