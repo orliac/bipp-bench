@@ -34,14 +34,17 @@ input_file=benchmark.in
 
 if [ $cluster == 'izar' ]; then
     ENV_SPACK="/home/orliac/SKA/ska-spack-env/env-bipp-izar"
+    VENV="/home/orliac/SKA/epfl-radio-astro/bipp-bench/VENV_IZARGCC"
 elif [ $cluster == 'jed' ]; then
     ENV_SPACK="/home/orliac/SKA/ska-spack-env/bipp-jed-gcc"
+    VENV="/home/orliac/SKA/epfl-radio-astro/bipp-bench/VENV_JEDGCC"
 else
     echo "-E- Unknown cluster $cluster"
     exit 1
 fi
  
 source ${ENV_SPACK}/activate.sh
+source ${VENV}/bin/activate
 
 SED_LINE_INDEX=$((${SLURM_ARRAY_TASK_ID}+1))
 
@@ -50,4 +53,5 @@ echo "-I- Input line >>$input_line<<"
 
 time python lofar_bootes_ss_${package}.py $input_line
 
+deactivate
 source ${ENV_SPACK}/deactivate.sh
