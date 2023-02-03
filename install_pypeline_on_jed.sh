@@ -44,9 +44,9 @@ source $VENV/bin/activate
 if [ 1 == 1 ]; then 
     python -m pip uninstall -y bluebild
     python -m pip uninstall -y pypeline
-    SKBUILD=${PACKAGE_ROOT}/_skbuild;              [ -d $SKBUILD ] && rm -r $SKBUILD
-    #EGGINFO=${PACKAGE_ROOT}/${PACKAGE}.egg-info;         [ -d $EGGINFO ] && rm -r $EGGINFO
-    #EGGINFO=${PACKAGE_ROOT}/python/${PACKAGE}.egg-info/; [ -d $EGGINFO ] && rm -r $EGGINFO
+    SKBUILD=${PACKAGE_ROOT}/_skbuild;                    [ -d $SKBUILD ] && rm -r $SKBUILD
+    EGGINFO=${PACKAGE_ROOT}/${PACKAGE}.egg-info;         [ -d $EGGINFO ] && rm -r $EGGINFO
+    EGGINFO=${PACKAGE_ROOT}/python/${PACKAGE}.egg-info/; [ -d $EGGINFO ] && rm -r $EGGINFO
 fi
 
 #export BLUEBILD_CMAKE_ARGS="-DBLUEBILD_BUILD_TYPE=RelWithDebInfo "
@@ -54,7 +54,7 @@ fi
 BLUEBILD_GPU=OFF python -m pip install --verbose --no-deps --no-build-isolation ${PACKAGE_ROOT}/src/bluebild
 python -m pip install --verbose --no-deps --no-build-isolation ${PACKAGE_ROOT}
 
-python -c "import pypeline"
+python -c "import ${PACKAGE}"
 echo "-I- test [python -c \"import ${PACKAGE}\"] successful"
 python -c "import bluebild"
 echo "-I- test [python -c \"import bluebild\"] successful"
