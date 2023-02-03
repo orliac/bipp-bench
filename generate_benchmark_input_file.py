@@ -38,16 +38,20 @@ if package == "bipp" and procUnit == "none":
     sys.exit(1)
 
 # Set up jobs to run in the benchmark
-pixWidths = [128, 256, 512, 1024, 2048, 4096, 8192]
-nLevels   = [16, 32, 64, 128]
-nStations = [32, 64, 128, 256, 512, 1024, 2048]
+nLevels   = [1, 2, 4, 16, 32, 60]
+pixWidths = [256, 512, 1024, 2048, 4096]
+nStations = [15, 30, 60]
+#nLevels   = [60]
+#pixWidths = [1024]
+#nStations = [60]
 
 with open(inFile, 'w') as f:
     for nsta in np.sort(nStations):
         for nlev in np.sort(nLevels):
-            for pixw in np.sort(pixWidths):
-                outdir = os.path.join(outDir, str(nsta), str(nlev), str(pixw))
-                cli  = f"--outdir {outdir} --cluster {cluster} --processing_unit {procUnit} --compiler {compiler} "
-                cli += f"--precision {precision} --package {package} --nsta {nsta} --nlev {nlev} --pixw {pixw}\n"
-                f.write(cli)
+            if nlev <= nsta:
+                for pixw in np.sort(pixWidths):
+                    outdir = os.path.join(outDir, str(nsta), str(nlev), str(pixw))
+                    cli  = f"--outdir {outdir} --cluster {cluster} --processing_unit {procUnit} --compiler {compiler} "
+                    cli += f"--precision {precision} --package {package} --nsta {nsta} --nlev {nlev} --pixw {pixw}\n"
+                    f.write(cli)
 f.close()
