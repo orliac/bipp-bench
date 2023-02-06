@@ -49,8 +49,8 @@ if [ "$compiler" != "gcc" ] && [ "$compiler" != "cuda" ]; then
     echo "-E- Unknown compiler specified. Allowed are: gcc, cuda."
     exit 1
 fi
-if [ "$cluster" != "izar" ] && [ "$compiler" != "jed" ]; then
-    echo "-E- Unknown compiler specified. Allowed are: izar, jed."
+if [ "$cluster" != "izar" ] && [ "$cluster" != "jed" ]; then
+    echo "-E- Unknown cluster specified. Allowed are: izar, jed."
     exit 1
 fi
 if [ "$cluster" == "jed" ] && [ "$compiler" == "cuda" ]; then
@@ -83,6 +83,11 @@ python generate_benchmark_input_file.py --bench_name=$bench_name --proc_unit=$pr
 echo "-I- Generated input file $in_file"
 module purge
 
+# Count the number of lines in $in_file
+NJOBS=$(wc -l < $in_file)
+echo NJOBS = $NJOBS
+NJOBS=$(($NJOBS-1))
+
 #
 ## Copy template files
 # 
@@ -99,6 +104,8 @@ cp -v bipptb.py                          $out_dir
 cd $out_dir
 
 slurm_opts=$(sed "s/|/ /g" <<< $slurm_opts)
+slurm_opts="$slurm_opts --array 0-${NJOBS}"
+[ "$cluster" == "izar" ] && slurm_opts="$slurm_opts%4"
 echo
 echo "slurm_opts >>$slurm_opts<<"
 echo
