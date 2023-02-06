@@ -51,7 +51,8 @@ fi
 
 #export BLUEBILD_CMAKE_ARGS="-DBLUEBILD_BUILD_TYPE=RelWithDebInfo "
 #BLUEBILD_GPU=OFF python -m pip install --user --verbose --no-deps --no-build-isolation ${PACKAGE_ROOT}
-BLUEBILD_GPU=OFF python -m pip install --verbose --no-deps --no-build-isolation ${PACKAGE_ROOT}/src/bluebild
+#export CUDAFLAGS="-g -G"
+BLUEBILD_GPU=CUDA python -m pip install --verbose --no-deps --no-build-isolation ${PACKAGE_ROOT}/src/bluebild
 python -m pip install --verbose --no-deps --no-build-isolation ${PACKAGE_ROOT}
 
 python -c "import pypeline"

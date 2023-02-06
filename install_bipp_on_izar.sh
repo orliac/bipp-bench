@@ -41,15 +41,16 @@ if [ 1 == 1 ]; then
     EGGINFO=${PACKAGE_ROOT}/python/${PACKAGE}.egg-info/; [ -d $EGGINFO ] && rm -r $EGGINFO
 fi
 
+#export BIPP_VC=ON
+
 #export BIPP_CMAKE_ARGS="-DBIPP_BUILD_TYPE=Debug"
 #export CUDAFLAGS="-g -G"
-export BIPP_VC=ON
 # Outside a venv
 #BIPP_GPU=CUDA python -m pip install --user --verbose --no-deps --no-build-isolation ${PACKAGE_ROOT} # For prod
 #BIPP_GPU=CUDA python -m pip install --user --verbose --no-deps -e ${PACKAGE_ROOT} # For dev
 # Inside a venv
-BIPP_GPU=CUDA python -m pip install --verbose --no-deps --no-build-isolation ${PACKAGE_ROOT} # For prod
-#BIPP_GPU=CUDA python -m pip install --verbose --no-deps -e ${BIPP_ROOT} # For dev
+#BIPP_GPU=CUDA python -m pip install --verbose --no-deps --no-build-isolation ${PACKAGE_ROOT} # For prod
+BIPP_GPU=CUDA python -m pip install --verbose --no-deps -e ${PACKAGE_ROOT} # For dev
 
 python -c "import ${PACKAGE}"
 echo "-I- test [python -c \"import ${PACKAGE}\"] successful"
