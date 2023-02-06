@@ -161,6 +161,7 @@ for t in times:
     S = vis(XYZ, W, wl)
     ifim_vis += (time.time() - t_ss)
     D, V, c_idx = I_dp(S, XYZ, W, wl)
+    print("python c_idx = ", c_idx)
     I_mfs(D, V, XYZ.data, W.data, c_idx, d2h)
     t_it = time.time() - t_it
     print(f" ... ifim t_it {i_it} {t_it:.3f} sec")
