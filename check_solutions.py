@@ -1,16 +1,36 @@
 import os
 import sys
 import json
-import matplotlib.pyplot as plt
+import numpy
 
+# List directories in given path, with some exclusions
+#
 def list_directories(path):
     return [ name for name in os.listdir(path) 
              if os.path.isdir(os.path.join(path, name)) and name != '__pycache__' ]
+
+
+# Compute the RMSE between two images
+#
+def stats_image_diff(image1, image2):
+    assert image1.shape == image2.shape, \
+        f"-E- shapes of images to compare do not match {image1.data.shape} vs {image2.data.shape}"
+    #print("-I- comparing images with shape ", image1.shape)
+    diff = image2 - image1
+    rmse = numpy.sqrt(numpy.sum(diff**2)/numpy.size(diff))
+    max_abs = numpy.max(numpy.abs(diff))
+    return rmse, max_abs
+
 
 # Benchmark's root directory
 bench_root = "/work/ska/orliac/benchmarks/bench04_72"
 if not os.path.isdir(bench_root):
     raise Exception("-E- Benchmark directory not found")
+
+
+DO_CHECK_RMS = False
+if DO_CHECK_RMS:
+    rms_f = open(f"{bench_root}/rms.txt", "w")
 
 # Global dict of dicts 
 ifims = {}
@@ -40,6 +60,34 @@ for package in list_directories(bench_root):                                    
                                 ifims[package][cluster][proc_unit][compiler][precision][algo][int(nsta)][int(nlev)] = {}
                                 p8 = os.path.join(p7, nlev)
                                 for pixw in list_directories(p8):                          #pixw
+
+                                    if DO_CHECK_RMS:
+                                        ### Compute RMS between solution and reference Pypeline Python solution
+                                        ilsq_data = os.path.join(p8, pixw, 'I_lsq_eq_data.npy')
+                                        if not os.path.isfile(ilsq_data):
+                                            raise Exeception(f"-E- Missing expected npy data file {ilsq_data}")
+                                        ilsq_grid = os.path.join(p8, pixw, 'I_lsq_eq_grid.npy')
+                                        if not os.path.isfile(ilsq_grid):
+                                            raise Exeception(f"-E- Missing expected npy grid file {ilsq_grid}")
+                                        #print("ilsq_data    :", ilsq_data)
+                                        #print("ilsq_grid    :", ilsq_grid)
+
+                                        ref_ilsq_data = ilsq_data.replace(package, 'pypeline').replace(proc_unit, 'none').replace(compiler, 'gcc')
+                                        if not os.path.isfile(ref_ilsq_data):
+                                            raise Exeception(f"-E- Missing expected npy ref data file {ref_ilsq_data}")
+                                        ref_ilsq_grid = ref_ilsq_data.replace('I_lsq_eq_data', 'I_lsq_eq_grid')
+                                        if not os.path.isfile(ref_ilsq_grid):
+                                            raise Exeception(f"-E- Missing expected npy ref grid file {ref_ilsq_grid}")
+                                        print("ref_ilsq_data:", ref_ilsq_data)
+                                        #print("ref_ilsq_grid:", ref_ilsq_grid)
+                                    
+                                        ref_lsq = numpy.load(ref_ilsq_data, allow_pickle=True)
+                                        sol_lsq = numpy.load(ilsq_data,     allow_pickle=True)
+                                        rmse_lsq, max_abs_err_lsq = stats_image_diff(ref_lsq, sol_lsq)
+                                        rms_f.write(f"{ilsq_data}, rmse = {rmse_lsq:.2E}, max_abs_err = {max_abs_err_lsq:.2E}\n")
+                                    
+                                    #sys.exit(0)
+                                    
                                     #print(f"{package:8s} {cluster:4s} {proc_unit:4s} {compiler:4s} {precision:6s} {algo} {nsta:2s} {nlev:>2s} {pixw:>4s}")
                                     stats_json = os.path.join(p8, pixw, 'stats.json')
                                     if not os.path.isfile(stats_json):
@@ -48,8 +96,19 @@ for package in list_directories(bench_root):                                    
                                         stats = json.load(stats_fh)
                                         ifims[package][cluster][proc_unit][compiler][precision][algo][int(nsta)][int(nlev)][int(pixw)] = float(stats['timings']['ifim'])
 
+if DO_CHECK_RMS:
+    rms_f.close()
+
+sys.exit(0)
+
 #print(ifims['pypeline'])
 #print(ifims['bipp'])
+
+#
+## Plotting section
+#
+
+import matplotlib.pyplot as plt
 
 colors = {}
 colors['pypeline'] = {'none': 'black', 'cpu': 'cornflowerblue', 'gpu': 'plum'}
@@ -57,7 +116,6 @@ colors['bipp']     = {                 'cpu': 'blue',           'gpu': 'fuchsia'
 
 markers = {'pypeline': '--o', 'bipp': '--D'}
 
-# Make plots
 
 ### Plot tts jed vs izar
 for nsta in 15,30,60:
