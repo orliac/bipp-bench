@@ -85,8 +85,7 @@ for package in list_directories(bench_root):                                    
                                         sol_lsq = numpy.load(ilsq_data,     allow_pickle=True)
                                         rmse_lsq, max_abs_err_lsq = stats_image_diff(ref_lsq, sol_lsq)
                                         rms_f.write(f"{ilsq_data}, rmse = {rmse_lsq:.2E}, max_abs_err = {max_abs_err_lsq:.2E}\n")
-                                    
-                                    #sys.exit(0)
+                            
                                     
                                     #print(f"{package:8s} {cluster:4s} {proc_unit:4s} {compiler:4s} {precision:6s} {algo} {nsta:2s} {nlev:>2s} {pixw:>4s}")
                                     stats_json = os.path.join(p8, pixw, 'stats.json')
@@ -99,7 +98,7 @@ for package in list_directories(bench_root):                                    
 if DO_CHECK_RMS:
     rms_f.close()
 
-sys.exit(0)
+#sys.exit(0)
 
 #print(ifims['pypeline'])
 #print(ifims['bipp'])
@@ -130,9 +129,13 @@ for nsta in 15,30,60:
         sols =[('jed', 'pypeline', 'cpu', 'gcc')]
         cluster_ref, package_ref, proc_unit_ref, compiler_ref = ('izar', 'pypeline', 'cpu', 'gcc')
         ref_ifims_sorted = dict(sorted(ifims[package_ref][cluster_ref][proc_unit_ref][compiler_ref]['double']['ss'][nsta][nlev].items()))
+        if 4096 in ref_ifims_sorted:
+            del ref_ifims_sorted[4096]
         x_ref, y_ref = ref_ifims_sorted.keys(), ref_ifims_sorted.values()
         for cluster, package, proc_unit, compiler in sols:
             ifims_sorted = dict(sorted(ifims[package][cluster][proc_unit][compiler]['double']['ss'][nsta][nlev].items()))
+            if 4096 in ifims_sorted:
+                del ifims_sorted[4096]
             x, y = ifims_sorted.keys(), ifims_sorted.values()
             if x != x_ref:
                 raise Exception("x and x_ref are expected to be the same.")
@@ -146,9 +149,12 @@ for nsta in 15,30,60:
         sols =[('jed', 'bipp', 'cpu', 'gcc')]
         cluster_ref, package_ref, proc_unit_ref, compiler_ref = ('izar', 'bipp', 'cpu', 'gcc')
         ref_ifims_sorted = dict(sorted(ifims[package_ref][cluster_ref][proc_unit_ref][compiler_ref]['double']['ss'][nsta][nlev].items()))
+        del ref_ifims_sorted[4096]
         x_ref, y_ref = ref_ifims_sorted.keys(), ref_ifims_sorted.values()
         for cluster, package, proc_unit, compiler in sols:
             ifims_sorted = dict(sorted(ifims[package][cluster][proc_unit][compiler]['double']['ss'][nsta][nlev].items()))
+            if 4096 in ifims_sorted:
+                del ifims_sorted[4096]
             x, y = ifims_sorted.keys(), ifims_sorted.values()
             if x != x_ref:
                 raise Exception("x and x_ref are expected to be the same.")
@@ -158,27 +164,15 @@ for nsta in 15,30,60:
             ax.plot(x, speedups, markers[package], color=colors[package][proc_unit], label=f"{package} {proc_unit}",
                     linewidth=1)
  
-
         ax.set_ylim(bottom=0.99)
-
-        """
-        for cluster, package, proc_unit, compiler in sols:
-            ifims_sorted = dict(sorted(ifims[package][cluster][proc_unit][compiler]['double']['ss'][nsta][nlev].items()))
-            x, y = ifims_sorted.keys(), ifims_sorted.values()
-            print(x, "\n", y)
-            ax.plot(x, y, markers[package], color=colors[package][proc_unit], label=f"{cluster} {package} {proc_unit}",
-                    linewidth=1)
-        """ 
-        #ax.set_yscale('log', base=10)
         ax.set_xscale('log', base=2)
         ax.legend()
         fig.savefig(plt_name)
         plt.show()
         plt.close()
+        #sys.exit(0)
 
-        sys.exit(0)
-
-
+"""
 cluster = 'jed'
 for nsta in 15,30,60:
     for nlev in 1,2,4,16,32:
@@ -234,6 +228,7 @@ for nsta in 15,30,60:
         fig.savefig(plt_name)
         #plt.show()
         #sys.exit(0)
+"""
 
 cluster = 'izar'
 for nsta in 15,30,60:
@@ -275,13 +270,26 @@ for nsta in 15,30,60:
         sols =[('pypeline', 'cpu', 'gcc'), ('pypeline', 'gpu', 'cuda'),
                ('bipp', 'cpu', 'gcc'), ('bipp', 'gpu', 'cuda')]
         package_ref, proc_unit_ref, compiler_ref = ('pypeline', 'none', 'gcc')
+        #print(f"###ref {package_ref}/{cluster}/{proc_unit_ref}/{compiler_ref}/double/ss/{nsta}/{nlev}")
         ref_ifims_sorted = dict(sorted(ifims[package_ref][cluster][proc_unit_ref][compiler_ref]['double']['ss'][nsta][nlev].items()))
+        del ref_ifims_sorted[4096]
         x_ref, y_ref = ref_ifims_sorted.keys(), ref_ifims_sorted.values()
+        print("x_ref", x_ref)
+        print("y_ref", y_ref)
+        
         for package, proc_unit, compiler in sols:
+            #print(f"###sol {package}/{cluster}/{proc_unit}/{compiler}/double/ss/{nsta}/{nlev}")
             ifims_sorted = dict(sorted(ifims[package][cluster][proc_unit][compiler]['double']['ss'][nsta][nlev].items()))
+            if 4096 in ifims_sorted:
+                del ifims_sorted[4096]
             x, y = ifims_sorted.keys(), ifims_sorted.values()
             if x != x_ref:
+                print(f"###sol {package}/{cluster}/{proc_unit}/{compiler}/double/ss/{nsta}/{nlev}")
+                print(f"###ref {package_ref}/{cluster}/{proc_unit_ref}/{compiler_ref}/double/ss/{nsta}/{nlev}")
                 raise Exception("x and x_ref are expected to be the same.")
+
+            print(x)
+            print(y)
             speedups = [tts_ref / tts for tts_ref, tts in zip(y_ref, y)]
             ax.plot(x, speedups, markers[package], color=colors[package][proc_unit], label=f"{package} {proc_unit}",
                     linewidth=1)
@@ -291,7 +299,7 @@ for nsta in 15,30,60:
         ax.set_xscale('log', base=2)
         ax.legend()
         fig.savefig(plt_name)
-        #plt.show()
+        plt.show()
   
         #sys.exit(0)
 
