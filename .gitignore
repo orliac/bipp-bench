@@ -5,4 +5,7 @@ pypeline-izar/
 pypeline-jed/
 __pycache__/
 VENV_*
+*.fits
+*.png
+*.npy
 
