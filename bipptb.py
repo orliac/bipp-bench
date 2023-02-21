@@ -92,12 +92,21 @@ def check_args(args_in):
                         choices=['single', 'double'], default='double')
     parser.add_argument("--package", help="Package to run, either bipp or pypeline",
                         choices=['bipp', 'pypeline'], required=True)
-    parser.add_argument("--nsta", help="Number of stations in simulation",
-                        required=True, type=int)
+    parser.add_argument("--nsta", help="Number of stations in simulation",  #EO: should defaults to None == all stations
+                        required=False, type=int) 
     parser.add_argument("--nlev", help="Number of energy levels in simulation",
                         required=True, type=int)
     parser.add_argument("--pixw", help="Image width/height in pixels",
                         required=True, type=int)
+    parser.add_argument("--wsc_scale", help="WSClean scale [arcsec]",
+                        type=int)
+    parser.add_argument("--time_slice_pe", help="Time slice for parameter estimation (PE)",
+                        type=int, default=1)
+    parser.add_argument("--time_slice_im", help="Time slice for imaging (IM)",
+                        type=int, default=1)
+    parser.add_argument("--sigma", help="Sigma in intensity field parameter estimation",
+                        type=float, default=0.95)
+
     args = parser.parse_args()
     """
     if args.outdir:
