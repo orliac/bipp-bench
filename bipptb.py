@@ -78,13 +78,13 @@ def dump_stats(stats, filename, outdir):
 
 
 def check_args(args_in):
-    #print("args =\n", args_in)
+    print("-I- command line arguments =", args_in)
     parser = argparse.ArgumentParser(args_in)
     parser.add_argument("--cluster", help="Cluster on which to run the benchmark",
                         choices=['izar', 'jed'], required=True)
     parser.add_argument("--compiler", help="Compiler to use",
                         choices=['cuda', 'rocm', 'gcc', 'intel'], required=True)
-    parser.add_argument("--outdir", help="Path to dumping location (no dumps if not set)",
+    parser.add_argument("--output_directory", help="Path to dumping location (no dumps if not set)",
                         required=True)
     parser.add_argument("--processing_unit",  help="Bluebild processing unit (for ctx definition)",
                         choices=['auto', 'cpu', 'gpu', 'none'], required=True)
@@ -100,12 +100,16 @@ def check_args(args_in):
                         required=True, type=int)
     parser.add_argument("--wsc_scale", help="WSClean scale [arcsec]",
                         type=int)
+    parser.add_argument("--wsc_log", help="WSClean log file")
     parser.add_argument("--time_slice_pe", help="Time slice for parameter estimation (PE)",
                         type=int, default=1)
     parser.add_argument("--time_slice_im", help="Time slice for imaging (IM)",
                         type=int, default=1)
     parser.add_argument("--sigma", help="Sigma in intensity field parameter estimation",
                         type=float, default=0.95)
+    parser.add_argument("--nufft_eps", help="NUFFT convergence epsilon",
+                        type=float, default=0.001)
+    parser.add_argument("--ms_file", help="Path to MS file to process")
 
     args = parser.parse_args()
     """
@@ -120,6 +124,27 @@ def check_args(args_in):
     if args.package == "bipp" and args.processing_unit == 'none':
         print('-E- bipp processing unit cannot be none.')
         sys.exit(1)
+
+    args.nbits = 32 if args.precision == 'single' else 64
+
+    if not os.path.exists(args.output_directory):
+        os.makedirs(args.output_directory)
+
+    print("-I- Command line input -----------------------------")
+    print("-I- MS file       =", args.ms_file)
+    print("-I- precision     =", args.precision)
+    print("-I- N. bits       =", args.nbits)
+    print("-I- N. stations   =", args.nsta)
+    print("-I- proc unit     =", args.processing_unit)
+    print("-I- N. pix        =", args.pixw)
+    print("-I- N. levels     =", args.nlev)
+    print("-I- WSClean scale =", args.wsc_scale)
+    print("-I- Time slice PE =", args.time_slice_pe)
+    print("-I- Time slice IM =", args.time_slice_im)
+    print("-I- sigma         =", args.sigma)
+    print("-I- NUFFT epsilon =", args.nufft_eps)
+    print("-I- Output dir.   =", args.output_directory)
+    print("-I- ------------------------------------------------")
 
     return args
 
