@@ -43,7 +43,7 @@ if args.ms_file == None:
     raise Exception("args.ms_file not set.")
 if not os.path.exists(args.ms_file):
     raise Exception(f"Could not open {args.ms_file}")
-ms = measurement_set.LofarMeasurementSet(args.ms_file, args.nsta, station_only=False)
+ms = measurement_set.LofarMeasurementSet(args.ms_file, args.nsta, station_only=True)
 print(f"-I- ms.field_center = {ms.field_center}")
 gram = bb_gr.GramBlock(ctx)
 
@@ -72,7 +72,7 @@ for t, f, S in ms.visibilities(channel_id=channel_ids, time_id=slice(None, None,
     S, _ = measurement_set.filter_data(S, W)
     I_est.collect(S, G)
 N_eig, intensity_intervals = I_est.infer_parameters()
-print("-I- N_eig =", N_eig)
+print("-I- IFPE N_eig =", N_eig)
 print("-I- intensity intervals =\n", intensity_intervals)
 print("-I- XYZ.shape =", XYZ.shape)
 
@@ -121,6 +121,7 @@ print(f"#@#IFIM {ifim_e - ifim_s:.3f} sec")
 #sys.exit(0)
 
 ### Sensitivity Field =========================================================
+
 # Parameter Estimation
 sfpe_s = time.time()
 S_est = bb_pe.SensitivityFieldParameterEstimator(sigma=args.sigma, ctx=ctx)

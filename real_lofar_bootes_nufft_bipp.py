@@ -75,7 +75,7 @@ for t, f, S in ms.visibilities(channel_id=[channel_id], time_id=slice(None, None
     S, _ = measurement_set.filter_data(S, W)
     I_est.collect(S, G)
 N_eig, intensity_intervals = I_est.infer_parameters()
-print("-I- N_eig =", N_eig)
+print("-I- IFPE N_eig =", N_eig)
 print("-I- intensity intervals =", intensity_intervals)
 print("-I- XYZ.shape =", XYZ.shape)
 

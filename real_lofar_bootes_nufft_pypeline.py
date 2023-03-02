@@ -41,11 +41,11 @@ np.random.seed(0)
 # Create context with selected processing unit.
 # Options are "NONE", "AUTO", "CPU" and "GPU".
 bb_proc_unit = None
-if proc_unit == 'cpu':
+if args.processing_unit == 'cpu':
     bb_proc_unit = bluebild.ProcessingUnit.CPU
-elif proc_unit == 'gpu':
+elif args.processing_unit == 'gpu':
     bb_proc_unit = bluebild.ProcessingUnit.GPU
-ctx = None if proc_unit == 'none' else bluebild.Context(bb_proc_unit)
+ctx = None if args.processing_unit == 'none' else bluebild.Context(bb_proc_unit)
 
 jkt0_s = time.time()
 
@@ -109,7 +109,7 @@ ifim_s = time.time()
 I_dp  = bb_dp.IntensityFieldDataProcessorBlock(N_eig, c_centroid, ctx=ctx)
 IV_dp = bb_dp.VirtualVisibilitiesDataProcessingBlock(N_eig, filters=('lsq', 'sqrt'))
 nufft_imager = bb_im.NUFFT_IMFS_Block(wl=wl, grid_size=args.pixw, FoV=FoV,
-                                      field_center=ms.field_center, eps=eps,
+                                      field_center=ms.field_center, eps=args.nufft_eps,
                                       n_trans=1, precision=args.precision, ctx=ctx)
 for t, f, S in ms.visibilities(channel_id=[channel_id], time_id=slice(None, None, args.time_slice_im), column="DATA"):
     wl   = constants.speed_of_light / f.to_value(u.Hz)
@@ -121,7 +121,7 @@ for t, f, S in ms.visibilities(channel_id=[channel_id], time_id=slice(None, None
     S_corrected = IV_dp(D, V, W, c_idx)
     nufft_imager.collect(UVW_baselines_t, S_corrected)
 
-lsq_image, sqrt_image = nufft_imager.get_statistic()
+I_lsq, I_sqrt = nufft_imager.get_statistic()
 ifim_e = time.time()
 print(f"#@#IFIM {ifim_e - ifim_s:.3f} sec")
 
@@ -146,7 +146,7 @@ sfim_s = time.time()
 S_dp  = bb_dp.SensitivityFieldDataProcessorBlock(N_eig, ctx)
 SV_dp = bb_dp.VirtualVisibilitiesDataProcessingBlock(N_eig, filters=('lsq',))
 nufft_imager = bb_im.NUFFT_IMFS_Block(wl=wl, grid_size=args.pixw, FoV=FoV.rad,
-                                      field_center=ms.field_center, eps=eps,
+                                      field_center=ms.field_center, eps=args.nufft_eps,
                                       n_trans=1, precision=args.precision, ctx=ctx)
 for t, f, _ in ms.visibilities(channel_id=[channel_id], time_id=slice(None, None, args.time_slice_im), column="NONE"):
     wl   = constants.speed_of_light / f.to_value(u.Hz)
@@ -157,8 +157,8 @@ for t, f, _ in ms.visibilities(channel_id=[channel_id], time_id=slice(None, None
     S_sensitivity = SV_dp(D, V, W, cluster_idx=np.zeros(N_eig, dtype=int))
     nufft_imager.collect(UVW_baselines_t, S_sensitivity)
 sensitivity_image = nufft_imager.get_statistic()[0]
-I_lsq_eq  = s2image.Image(lsq_image  / sensitivity_image, nufft_imager._synthesizer.xyz_grid)
-I_sqrt_eq = s2image.Image(sqrt_image / sensitivity_image, nufft_imager._synthesizer.xyz_grid)
+I_lsq_eq  = s2image.Image(I_lsq  / sensitivity_image, nufft_imager._synthesizer.xyz_grid)
+I_sqrt_eq = s2image.Image(I_sqrt / sensitivity_image, nufft_imager._synthesizer.xyz_grid)
 sfim_e = time.time()
 print(f"#@#SFIM {sfim_e - sfim_s:.3f} sec")
 
@@ -173,15 +173,15 @@ if os.getenv('BB_EARLY_EXIT') == "1":
 
 
 print("######################################################################")
-print("-I- intensity_intervals =\n", intensity_intervals, "\n")
-print("-I- xyz_grid:", xyz_grid.shape, "\n", xyz_grid, "\n")
+print("-I- c_centroid =\n", c_centroid, "\n")
+print("-I- px_grid:", px_grid.shape, "\n", px_grid, "\n")
 print("-I- I_lsq:\n", I_lsq, "\n")
 print("-I- I_lsq_eq:\n", I_lsq_eq.data, "\n")
 
 bipptb.dump_data(I_lsq_eq.data, 'I_lsq_eq_data', args.output_directory)
 bipptb.dump_data(I_lsq_eq.grid, 'I_lsq_eq_grid', args.output_directory)
 
-bipptb.dump_json((ifpe_e - ifpe_s), ifpe_vis, (ifim_e - ifim_s), ifim_vis,
+bipptb.dump_json((ifpe_e - ifpe_s), 0.0, (ifim_e - ifim_s), 0.0,
                  (sfpe_e - sfpe_s), (sfim_e - sfim_s),
                  'stats.json', args.output_directory)
 
