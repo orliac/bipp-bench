@@ -7,32 +7,22 @@ import json
 #import bluebild
 
 
-#def dump_json(v_shape, w_shape, grid_shape, t_ifpe, t_ifim, t_sfpe, t_sfim, filename, outdir):
-def dump_json(t_ifpe, t_ifpe_vis, t_ifim, t_ifim_vis,
-              t_sfpe, t_sfim,
-              filename, outdir):
-
-    #Nb, Ne     = v_shape
-    #Na, Nb     = w_shape
-    #Nc, Nh, Nw = grid_shape
-
+def dump_json(info):
+    print(info)
     stats = { 
         "timings": {
-            'ifpe': t_ifpe,
-            'ifpe_vis': t_ifpe_vis,
-            'ifim': t_ifim,
-            'ifim_vis': t_ifim_vis,
-            'sfpe': t_sfpe,
-            'sfim': t_sfim
+            'ifpe': info['ifpe_e'] - info['ifpe_s'],
+            'ifim': info['ifim_e'] - info['ifim_s'],
+            'sfpe': info['sfpe_e'] - info['sfpe_s'],
+            'sfim': info['sfim_e'] - info['sfim_s']
+            #'ifpe_vis': t_ifpe_vis,
+            #'ifim_vis': t_ifim_vis,
         },
-        #"setup" : {
-        #    'Na': Na, 'Nb': Nb, 'Nc': Nc,
-        #    'Ne': Ne, 'Nh': Nh, 'Nw': Nw
-        #}
+        "visibilities": {'ifim': info['n_vis_ifim']}
     }
 
-    if outdir:
-        with open(os.path.join(outdir, filename), "w") as outfile:
+    if info['out_dir']:
+        with open(os.path.join(info['out_dir'], info['filename']), "w") as outfile:
             outfile.write(json.dumps(stats, indent=4))
 
 
@@ -126,6 +116,9 @@ def check_args(args_in):
         sys.exit(1)
 
     args.nbits = 32 if args.precision == 'single' else 64
+
+    # 0 station means all stations
+    if args.nsta == 0: args.nsta = None
 
     if not os.path.exists(args.output_directory):
         os.makedirs(args.output_directory)
