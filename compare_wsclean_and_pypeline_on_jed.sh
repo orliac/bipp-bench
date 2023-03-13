@@ -2,7 +2,9 @@
 
 set -e
 
-source /home/orliac/SKA/ska-spack-env/bipp-jed-gcc/activate.sh
+MY_SPACK_ENV=bipp-jed-gcc
+
+source /home/orliac/SKA/ska-spack-env/${MY_SPACK_ENV}/activate.sh
 python -V
 
 source ./VENV_IZARGCC/bin/activate
@@ -43,7 +45,7 @@ if [ 1 == 1 ]; then
     echo WSClean
     echo =============================================================================
     MS_FILE=gauss4_t201806301100_SBL180.MS
-    time chgcentre -flipuvwsign $MS_FILE
+    #time chgcentre -flipuvwsign $MS_FILE
     time wsclean \
         -size ${WSC_SIZE} ${WSC_SIZE} \
         -scale ${WSC_SCALE}asec \
@@ -51,7 +53,10 @@ if [ 1 == 1 ]; then
         -weight natural \
         -niter 0 \
         -name test02 \
-	$MS_FILE
+        ${MS_FILE}
 fi
+
+
 deactivate
-source /home/orliac/SKA/ska-spack-env/bipp-jed-gcc/deactivate.sh
+
+source /home/orliac/SKA/ska-spack-env/${MY_SPACK_ENV}/deactivate.sh
