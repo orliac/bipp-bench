@@ -6,7 +6,6 @@ LOFAR imaging with BIPP NUFFT from MS dataset
 import os
 import sys
 import time
-import re
 import astropy.units as u
 from astropy.io import fits
 from astropy.coordinates import Angle
@@ -49,10 +48,7 @@ print(f"-I- ms.field_center = {ms.field_center}")
 gram = bb_gr.GramBlock(ctx)
 
 # Observation
-channel_id = 0
-frequency = ms.channels["FREQUENCY"][channel_id]
-print(f"-I- frequency = {frequency}")
-wl = constants.speed_of_light / frequency.to_value(u.Hz)
+channel_ids = [0]
 
 # Grids
 lmn_grid, xyz_grid = frame.make_grids(args.pixw, FoV.rad, ms.field_center)
@@ -61,13 +57,26 @@ px_h = xyz_grid.shape[2]
 print("-I- lmd_grid.shape =", lmn_grid.shape)
 print("-I- xyz_grid.shape =", xyz_grid.shape)
 
+# Nufft Synthesis options
+opt = bipp.NufftSynthesisOptions()
+opt.set_tolerance(args.nufft_eps)
+# Set the maximum number of data packages that are processed together after collection.
+# A larger number increases memory usage, but usually improves performance.
+# If set to "None", an internal heuristic will be used.
+opt.set_collect_group_size(None)
+# Set the domain splitting methods for image and uvw coordinates.
+# Splitting decreases memory usage, but may lead to lower performance.
+# Best used with a wide spread of image or uvw coordinates.
+# Possible options are "grid", "none" or "auto"
+opt.set_local_image_partition(bipp.Partition.grid([1,1,1]))
+opt.set_local_uvw_partition(bipp.Partition.none())
 
 ### Intensity Field ===========================================================
 
 # Parameter Estimation
 ifpe_s = time.time()
 I_est = bb_pe.IntensityFieldParameterEstimator(args.nlev, sigma=args.sigma, ctx=ctx)
-for t, f, S in ms.visibilities(channel_id=[channel_id], time_id=slice(None, None, args.time_slice_pe), column="DATA"):
+for t, f, S in ms.visibilities(channel_id=channel_ids, time_id=slice(None, None, args.time_slice_pe), column="DATA"):
     wl   = constants.speed_of_light / f.to_value(u.Hz)
     XYZ  = ms.instrument(t)
     W    = ms.beamformer(XYZ, wl)
@@ -76,7 +85,7 @@ for t, f, S in ms.visibilities(channel_id=[channel_id], time_id=slice(None, None
     I_est.collect(S, G)
 N_eig, intensity_intervals = I_est.infer_parameters()
 print("-I- IFPE N_eig =", N_eig)
-print("-I- intensity intervals =", intensity_intervals)
+print("-I- intensity intervals =\n", intensity_intervals)
 print("-I- XYZ.shape =", XYZ.shape)
 
 ifpe_e = time.time()
@@ -91,8 +100,10 @@ print("-I- N_station =", N_station)
 # Imaging
 n_vis_ifim = 0
 ifim_s = time.time()
+ifim_vis = 0
 imager = bipp.NufftSynthesis(
     ctx,
+    opt,
     N_antenna,
     N_station,
     intensity_intervals.shape[0],
@@ -100,20 +111,23 @@ imager = bipp.NufftSynthesis(
     lmn_grid[0],
     lmn_grid[1],
     lmn_grid[2],
-    args.precision,
-    args.nufft_eps)
+    args.precision)
 
-for t, f, S in ms.visibilities(channel_id=[channel_id], time_id=slice(None, None, args.time_slice_im), column="DATA"):
+i_it = 0
+for t, f, S in ms.visibilities(channel_id=channel_ids, time_id=slice(None, None, args.time_slice_im), column="DATA"):
+    t_it = time.time()
     wl   = constants.speed_of_light / f.to_value(u.Hz)
     XYZ  = ms.instrument(t)
     UVW_baselines_t = ms.instrument.baselines(t, uvw=True, field_center=ms.field_center)
     W    = ms.beamformer(XYZ, wl)
     S, _ = measurement_set.filter_data(S, W)
-    n_vis = np.count_nonzero(S.data)
-    n_vis_ifim += n_vis
     uvw = frame.reshape_and_scale_uvw(wl, UVW_baselines_t)
     imager.collect(N_eig, wl, intensity_intervals, W.data, XYZ.data, uvw, S.data)
-
+    n_vis = np.count_nonzero(S.data)
+    n_vis_ifim += n_vis
+    t_it = time.time() - t_it
+    if i_it < 10: print(f" ... ifim t_it {i_it} {t_it:.3f} sec")
+    i_it += 1
 I_lsq  = imager.get("LSQ").reshape((-1, args.pixw, args.pixw))
 I_sqrt = imager.get("SQRT").reshape((-1, args.pixw, args.pixw))
 ifim_e = time.time()
@@ -125,7 +139,7 @@ print(f"#@#IFIM {ifim_e - ifim_s:.3f} sec  NVIS {n_vis_ifim}")
 # Parameter Estimation
 sfpe_s = time.time()
 S_est = bb_pe.SensitivityFieldParameterEstimator(sigma=args.sigma, ctx=ctx)
-for t, f, _ in ms.visibilities(channel_id=[channel_id], time_id=slice(None, None, args.time_slice_im), column="NONE"):
+for t, f, _ in ms.visibilities(channel_id=channel_ids, time_id=slice(None, None, args.time_slice_pe), column="NONE"):
     wl  = constants.speed_of_light / f.to_value(u.Hz)
     XYZ = ms.instrument(t)
     W   = ms.beamformer(XYZ, wl)
@@ -142,6 +156,7 @@ sensitivity_intervals = np.array([[0, np.finfo("f").max]])
 imager = None  # release previous imager first to some additional memory
 imager = bipp.NufftSynthesis(
     ctx,
+    opt,
     N_antenna,
     N_station,
     sensitivity_intervals.shape[0],
@@ -149,10 +164,9 @@ imager = bipp.NufftSynthesis(
     lmn_grid[0],
     lmn_grid[1],
     lmn_grid[2],
-    args.precision,
-    args.nufft_eps)
+    args.precision)
 
-for t, f, _ in ms.visibilities(channel_id=[channel_id], time_id=slice(None, None, args.time_slice_im), column="NONE"):
+for t, f, _ in ms.visibilities(channel_id=channel_ids, time_id=slice(None, None, args.time_slice_im), column="NONE"):
     wl   = constants.speed_of_light / f.to_value(u.Hz)
     XYZ = ms.instrument(t)
     W   = ms.beamformer(XYZ, wl)
@@ -184,98 +198,18 @@ print("-I- xyz_grid:", xyz_grid.shape, "\n", xyz_grid, "\n")
 print("-I- I_lsq:\n", I_lsq, "\n")
 print("-I- I_lsq_eq:\n", I_lsq_eq.data, "\n")
 
+print("-I- args.output_directory:", args.output_directory)
+
 bipptb.dump_data(I_lsq_eq.data, 'I_lsq_eq_data', args.output_directory)
 bipptb.dump_data(I_lsq_eq.grid, 'I_lsq_eq_grid', args.output_directory)
 
-bipptb.dump_json((ifpe_e - ifpe_s), 0.0, (ifim_e - ifim_s), 0.0,
-                 (sfpe_e - sfpe_s), (sfim_e - sfim_s),
-                 'stats.json', args.output_directory)
-
-sys.exit(0)
-
-# Plot Results ================================================================
-
-
-if args.wsc_log:
-    print("-I- got wsc_log ", args.wsc_log)
-
-    hdul = fits.open('test02-dirty.fits')
-    hdul.info()
-    data = hdul[0].data
-    print("data.shape =", data.shape)
-    print("data =", data)
-
-
-    lines = open(args.wsc_log, "r").readlines()
-    for line in lines:
-        line = line.strip()
-        patt = "Total nr. of visibilities to be gridded:"
-        if re.search(patt, line):
-            wsc_totvis = line.split(patt)[-1]
-        patt = "effective count after weighting:"
-        if re.search(patt, line):
-            wsc_gridvis = line.split(patt)[-1]
-
-        if re.search("Inversion:", line):
-            wsc_t_inv, wsc_t_pred, wsc_t_deconv = re.split("\s*Inversion:\s*|\s*,\s*prediction:\s*|\s*,\s*deconvolution:\s*", line)[-3:]
-            print("wsc_times =", wsc_t_inv, wsc_t_pred, wsc_t_deconv)
-
-from mpl_toolkits.axes_grid1 import make_axes_locatable
-
-
-# Produce different images including additional energy levels
-#
-for nlev in range(1, I_lsq_eq.data.shape[0] + 1):
-
-    fig, ax = plt.subplots(ncols=3, figsize=(25,12))
-    plt.suptitle(f"bipp energy levels from 0 to {nlev - 1}, {n_vis_ifim} visibilities\n" +
-                 f"WSClean visibilities: total {wsc_totvis}, effective after weighting {wsc_gridvis}\n" +
-                 f"WSClean times: inv {wsc_t_inv}, pred {wsc_t_pred}, deconv {wsc_t_deconv}", fontsize=22)
-
-    bb_eq_cum = np.zeros([I_lsq_eq.data.shape[1], I_lsq_eq.data.shape[2]])
-    for i in range(0, nlev):
-        print(" ... adding level", i)
-        bb_eq_cum += I_lsq_eq.data[i,:,:]
-    print(f"min, max bb lev {i}: {np.min(bb_eq_cum)}, {np.max(bb_eq_cum)}")
-
-    # Align min to 0.0 and normalize
-    bb_eq_cum  = np.fliplr(bb_eq_cum)
-    bb_eq_cum -= np.min(bb_eq_cum)
-    bb_eq_cum /= np.max(bb_eq_cum)
-    print(f"min, max bb : {np.min(bb_eq_cum)}, {np.max(bb_eq_cum)}")
-    
-    im0 = ax[0].imshow(bb_eq_cum)
-    ax[0].set_title("Shifted normalized bipp LSQ dirty", fontsize=20)
-    divider = make_axes_locatable(ax[0])
-    cax = divider.append_axes("right", size="5%", pad=0.05)
-    plt.colorbar(im0, cax=cax)
-
-    print(f"min, max wsclean : {np.min(data[0,0,:,:])}, {np.max(data[0,0,:,:])}")
-    normed_wsc  = data[0,0,:,:] - np.min(data[0,0,:,:])
-    normed_wsc /= np.max(normed_wsc)
-    print(f"min, max wsclean : {np.min(normed_wsc)}, {np.max(normed_wsc)}")
-    im1 = ax[1].imshow(normed_wsc)
-    ax[1].set_title("Shifted normalized WSClean dirty", fontsize=20)
-    divider = make_axes_locatable(ax[1])
-    cax = divider.append_axes("right", size="5%", pad=0.05)
-    plt.colorbar(im1, cax=cax)
-
-    diff = bb_eq_cum - normed_wsc
-    print(f"min, max diff    : {np.min(diff)}, {np.max(diff)}")
-    im2 = ax[2].imshow(diff)
-    ax[2].set_title("bipp minus WSClean", fontsize=20)
-    divider = make_axes_locatable(ax[2])
-    cax = divider.append_axes("right", size="5%", pad=0.05)
-    plt.colorbar(im2, cax=cax)
-
-    plt.tight_layout()
-
-    fig.savefig('bipp_nufft_gauss4_0-'+ str(nlev - 1) + '.png')
-
-
-
-
-
+bipptb.dump_json({'ifpe_s': ifpe_s, 'ifpe_e': ifpe_e,
+                  'ifim_s': ifim_s, 'ifim_e': ifim_e,
+                  'sfpe_s': sfpe_s, 'sfpe_e': sfpe_e,
+                  'sfim_s': sfim_s, 'sfim_e': sfim_e,
+                  'n_vis_ifim': n_vis_ifim,
+                  'filename': 'stats.json',
+                  'out_dir': args.output_directory})
 
 """
 ### Plotting section
