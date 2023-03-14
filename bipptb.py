@@ -111,9 +111,14 @@ def check_args(args_in):
     else:
         print("-W- will not dump anything since --outdir was not set")
     """
+
     if args.package == "bipp" and args.processing_unit == 'none':
         print('-E- bipp processing unit cannot be none.')
         sys.exit(1)
+
+    if args.package == "pypeline" and args.sigma == 1.0:
+        print('-W- pypeline reset of args.sigma from 1.0 to 0.99999')
+        args.sigma = 0.99999
 
     args.nbits = 32 if args.precision == 'single' else 64
 
@@ -122,6 +127,7 @@ def check_args(args_in):
 
     if not os.path.exists(args.output_directory):
         os.makedirs(args.output_directory)
+
 
     print("-I- Command line input -----------------------------")
     print("-I- MS file       =", args.ms_file)
