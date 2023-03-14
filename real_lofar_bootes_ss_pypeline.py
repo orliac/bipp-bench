@@ -11,14 +11,12 @@ Real-data LOFAR imaging with Bluebild (StandardSynthesis).
 import os
 import sys
 import time
-import re
 import astropy.units as u
 from astropy.coordinates import Angle
 from astropy.io import fits
 import imot_tools.io.s2image as s2image
 import imot_tools.math.sphere.grid as grid
 import imot_tools.math.sphere.transform as transform
-import matplotlib.pyplot as plt
 import numpy as np
 import scipy.constants as constants
 import bluebild
@@ -77,8 +75,6 @@ n_grid = np.sqrt(1 - l_grid ** 2 - m_grid ** 2)  # No -1 if r on the sphere !
 lmn_grid = np.stack((l_grid, m_grid, n_grid), axis=0)
 uvw_frame = frame.uvw_basis(ms.field_center)
 px_grid = np.tensordot(uvw_frame, lmn_grid, axes=1)
-px_w = px_grid.shape[1]
-px_h = px_grid.shape[2]
 print("-I- px_grid.shape =", px_grid.shape)
 
 
@@ -91,8 +87,8 @@ for t, f, S in ms.visibilities(channel_id=[channel_id], time_id=slice(None, None
     wl = constants.speed_of_light / f.to_value(u.Hz)
     XYZ = ms.instrument(t)
     W = ms.beamformer(XYZ, wl)
+    S, W = measurement_set.filter_data(S, W)
     G = gram(XYZ, W, wl)
-    S, _ = measurement_set.filter_data(S, W)
     I_est.collect(S, G)
 N_eig, c_centroid = I_est.infer_parameters()
 print("-I- IFPE N_eig =", N_eig)
@@ -129,6 +125,7 @@ for t, f, _ in  ms.visibilities(channel_id=[channel_id], time_id=slice(None, Non
     wl = constants.speed_of_light / f.to_value(u.Hz)
     XYZ = ms.instrument(t)
     W = ms.beamformer(XYZ, wl)
+    _, W = measurement_set.filter_data(S, W)
     G = gram(XYZ, W, wl)
     S_est.collect(G)
 N_eig = S_est.infer_parameters()
@@ -149,7 +146,7 @@ for t, f, _ in  ms.visibilities(channel_id=[channel_id], time_id=slice(None, Non
     _ = S_mfs(D, V, XYZ.data, W.data, cluster_idx=np.zeros(N_eig, dtype=int))
 _, S = S_mfs.as_image()
 sfim_e = time.time()
-print(f"#@#SFIM {sfim_e - sfim_s:.3f} sec  NVIS {n_vis_sfim}")
+print(f"#@#SFIM {sfim_e - sfim_s:.3f} sec\n")
 
 jkt0_e = time.time()
 print(f"#@#TOT {jkt0_e - jkt0_s:.3f} sec\n")
@@ -175,85 +172,10 @@ print("-I- I_lsq_eq:\n", I_lsq_eq.data, "\n")
 bipptb.dump_data(I_lsq_eq.data, 'I_lsq_eq_data', args.output_directory)
 bipptb.dump_data(I_lsq_eq.grid, 'I_lsq_eq_grid', args.output_directory)
 
-bipptb.dump_json((ifpe_e - ifpe_s), 0.0, (ifim_e - ifim_s), 0.0,
-                 (sfpe_e - sfpe_s), (sfim_e - sfim_s),
-                 'stats.json', args.output_directory)
-
-
-# Plot Results ================================================================
-
-if args.wsc_log:
-    print("-I- got wsc_log ", args.wsc_log)
-
-    hdul = fits.open('test02-dirty.fits')
-    hdul.info()
-    data = hdul[0].data
-    print("data.shape =", data.shape)
-    print("data =", data)
-    #sys.exit(0)
-
-    lines = open(args.wsc_log, "r").readlines()
-    for line in lines:
-        line = line.strip()
-        patt = "Total nr. of visibilities to be gridded:"
-        if re.search(patt, line):
-            wsc_totvis = line.split(patt)[-1]
-        patt = "effective count after weighting:"
-        if re.search(patt, line):
-            wsc_gridvis = line.split(patt)[-1]
-
-        if re.search("Inversion:", line):
-            wsc_t_inv, wsc_t_pred, wsc_t_deconv = re.split("\s*Inversion:\s*|\s*,\s*prediction:\s*|\s*,\s*deconvolution:\s*", line)[-3:]
-            print("wsc_times =", wsc_t_inv, wsc_t_pred, wsc_t_deconv)
-
-from mpl_toolkits.axes_grid1 import make_axes_locatable
-
-
-# Produce different images including additional energy levels
-#
-for nlev in range(1, I_lsq_eq.data.shape[0] + 1):
-
-    fig, ax = plt.subplots(ncols=3, figsize=(25,12))
-    plt.suptitle(f"Bluebild energy levels from 0 to {nlev - 1}, {n_vis_sfim} visibilities\n" +
-                 f"WSClean visibilities: total {wsc_totvis}, effective after weighting {wsc_gridvis}\n" +
-                 f"WSClean times: inv {wsc_t_inv}, pred {wsc_t_pred}, deconv {wsc_t_deconv}", fontsize=22)
-
-    bb_eq_cum = np.zeros([I_lsq_eq.data.shape[1], I_lsq_eq.data.shape[2]])
-    for i in range(0, nlev):
-        print(" ... adding level", i)
-        bb_eq_cum += I_lsq_eq.data[i,:,:]
-    print(f"min, max bb lev {i}: {np.min(bb_eq_cum)}, {np.max(bb_eq_cum)}")
-
-    # Align min to 0.0 and normalize
-    bb_eq_cum  = np.fliplr(bb_eq_cum)
-    bb_eq_cum -= np.min(bb_eq_cum)
-    bb_eq_cum /= np.max(bb_eq_cum)
-    print(f"min, max bb : {np.min(bb_eq_cum)}, {np.max(bb_eq_cum)}")
-    
-    im0 = ax[0].imshow(bb_eq_cum)
-    ax[0].set_title("Shifted normalized BB LSQ dirty", fontsize=20)
-    divider = make_axes_locatable(ax[0])
-    cax = divider.append_axes("right", size="5%", pad=0.05)
-    plt.colorbar(im0, cax=cax)
-
-    print(f"min, max wsclean : {np.min(data[0,0,:,:])}, {np.max(data[0,0,:,:])}")
-    normed_wsc  = data[0,0,:,:] - np.min(data[0,0,:,:])
-    normed_wsc /= np.max(normed_wsc)
-    print(f"min, max wsclean : {np.min(normed_wsc)}, {np.max(normed_wsc)}")
-    im1 = ax[1].imshow(normed_wsc)
-    ax[1].set_title("Shifted normalized WSClean dirty", fontsize=20)
-    divider = make_axes_locatable(ax[1])
-    cax = divider.append_axes("right", size="5%", pad=0.05)
-    plt.colorbar(im1, cax=cax)
-
-    diff = bb_eq_cum - normed_wsc
-    print(f"min, max diff    : {np.min(diff)}, {np.max(diff)}")
-    im2 = ax[2].imshow(diff)
-    ax[2].set_title("BB minus WSClean", fontsize=20)
-    divider = make_axes_locatable(ax[2])
-    cax = divider.append_axes("right", size="5%", pad=0.05)
-    plt.colorbar(im2, cax=cax)
-
-    plt.tight_layout()
-
-    fig.savefig('bb_gauss4_0-'+ str(nlev - 1) + '.png')
+bipptb.dump_json({'ifpe_s': ifpe_s, 'ifpe_e': ifpe_e,
+                  'ifim_s': ifim_s, 'ifim_e': ifim_e,
+                  'sfpe_s': sfpe_s, 'sfpe_e': sfpe_e,
+                  'sfim_s': sfim_s, 'sfim_e': sfim_e,
+                  'n_vis_ifim': n_vis_ifim,
+                  'filename': 'stats.json',
+                  'out_dir': args.output_directory})

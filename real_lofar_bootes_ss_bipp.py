@@ -18,6 +18,7 @@ import bipp.parameter_estimator as bb_pe
 import bipp.measurement_set as measurement_set
 import bipp.frame as frame
 import bipp.imot_tools.io.s2image as s2image
+import bipp.source as source
 import bipptb
 
 
@@ -67,8 +68,8 @@ for t, f, S in ms.visibilities(channel_id=channel_ids, time_id=slice(None, None,
     wl   = constants.speed_of_light / f.to_value(u.Hz)
     XYZ  = ms.instrument(t)
     W    = ms.beamformer(XYZ, wl)
+    S, W = measurement_set.filter_data(S, W)
     G    = gram(XYZ, W, wl)
-    S, _ = measurement_set.filter_data(S, W)
     I_est.collect(S, G)
 N_eig, intensity_intervals = I_est.infer_parameters()
 print("-I- IFPE N_eig =", N_eig)
@@ -105,7 +106,7 @@ for t, f, S in ms.visibilities(channel_id=channel_ids, time_id=slice(None, None,
     wl   = constants.speed_of_light / f.to_value(u.Hz)
     XYZ  = ms.instrument(t)
     W    = ms.beamformer(XYZ, wl)
-    S, _ = measurement_set.filter_data(S, W)
+    S, W = measurement_set.filter_data(S, W)
     imager.collect(N_eig, wl, intensity_intervals, W.data, XYZ.data, S.data)
     n_vis = np.count_nonzero(S.data)
     n_vis_ifim += n_vis
@@ -123,11 +124,12 @@ print(f"#@#IFIM {ifim_e - ifim_s:.3f} sec  NVIS {n_vis_ifim}")
 # Parameter Estimation
 sfpe_s = time.time()
 S_est = bb_pe.SensitivityFieldParameterEstimator(sigma=args.sigma, ctx=ctx)
-for t, f, _ in ms.visibilities(channel_id=channel_ids, time_id=slice(None, None, args.time_slice_pe), column="NONE"):
-    wl  = constants.speed_of_light / f.to_value(u.Hz)
-    XYZ = ms.instrument(t)
-    W   = ms.beamformer(XYZ, wl)
-    G   = gram(XYZ, W, wl)
+for t, f, S in ms.visibilities(channel_id=channel_ids, time_id=slice(None, None, args.time_slice_pe), column="DATA"):
+    wl   = constants.speed_of_light / f.to_value(u.Hz)
+    XYZ  = ms.instrument(t)
+    W    = ms.beamformer(XYZ, wl)
+    _, W = measurement_set.filter_data(S, W)
+    G    = gram(XYZ, W, wl)
     S_est.collect(G)
 N_eig = S_est.infer_parameters()
 print("-I- SFPE N_eig =", N_eig)
@@ -149,15 +151,14 @@ imager = bipp.StandardSynthesis(
     xyz_grid[2],
     args.precision)
 
-for t, f, _ in ms.visibilities(channel_id=channel_ids, time_id=slice(None, None, args.time_slice_im), column="NONE"):
+for t, f, S in ms.visibilities(channel_id=channel_ids, time_id=slice(None, None, args.time_slice_im), column="DATA"):
     wl   = constants.speed_of_light / f.to_value(u.Hz)
     XYZ  = ms.instrument(t)
     W    = ms.beamformer(XYZ, wl)
+    _, W = measurement_set.filter_data(S, W)
     imager.collect(N_eig, wl, sensitivity_intervals, W.data, XYZ.data)
 
 sensitivity_image = imager.get("INV_SQ").reshape((-1, px_w, px_h))
-
-print("-I- sensitivity_image.shape =", sensitivity_image.shape)
 
 I_std_eq = s2image.Image(I_std / sensitivity_image, xyz_grid.reshape(3, px_w, px_h))
 I_lsq_eq = s2image.Image(I_lsq / sensitivity_image, xyz_grid.reshape(3, px_w, px_h))
@@ -193,25 +194,3 @@ bipptb.dump_json({'ifpe_s': ifpe_s, 'ifpe_e': ifpe_e,
                   'n_vis_ifim': n_vis_ifim,
                   'filename': 'stats.json',
                   'out_dir': args.output_directory})
-
-"""
-### Plot results
-plt.figure()
-ax = plt.gca()
-I_lsq_eq.draw(catalog=sky_model.xyz.T, ax=ax, data_kwargs=dict(cmap='cubehelix'), show_gridlines=False, catalog_kwargs=dict(s=30, linewidths=0.5, alpha = 0.5))
-ax.set_title(f'BIPP LSQ, sensitivity-corrected image (NEW SS)\n'
-             f'Bootes Field: {sky_model.intensity.size} sources (simulated), LOFAR: {N_station} stations, FoV: {FoV_deg} degrees.')
-fp = "I_lsq.png"
-if out_dir: fp = os.path.join(out_dir, fp)
-plt.savefig(fp)
-
-
-plt.figure()
-ax = plt.gca()
-I_std_eq.draw(catalog=sky_model.xyz.T, ax=ax, data_kwargs=dict(cmap='cubehelix'), show_gridlines=False, catalog_kwargs=dict(s=30, linewidths=0.5, alpha = 0.5))
-ax.set_title(f'BIPP STD, sensitivity-corrected image (NEW SS)\n'
-             f'Bootes Field: {sky_model.intensity.size} sources (simulated), LOFAR: {N_station} stations, FoV: {FoV_deg} degrees.')
-fp = "I_std.png"
-if out_dir: fp = os.path.join(out_dir, fp)
-plt.savefig(fp)
-"""
