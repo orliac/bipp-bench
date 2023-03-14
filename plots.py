@@ -7,48 +7,7 @@ import argparse
 import datetime
 from mpl_toolkits.axes_grid1 import make_axes_locatable
 from astropy.io import fits
-
-
-def get_wsclean_info_from_log(wsclean_log):
-    lines = open(wsclean_log, "r").readlines()
-    for line in lines:
-        line = line.strip()
-        patt = "Total nr. of visibilities to be gridded:"
-        if re.search(patt, line):
-            wsc_totvis = line.split(patt)[-1]
-        patt = "effective count after weighting:"
-        if re.search(patt, line):
-            wsc_gridvis = line.split(patt)[-1]
-        if re.search("Inversion:", line):
-            wsc_t_inv, wsc_t_pred, wsc_t_deconv = re.split("\s*Inversion:\s*|\s*,\s*prediction:\s*|\s*,\s*deconvolution:\s*", line)[-3:]
-            t_inv    = datetime.datetime.strptime(wsc_t_inv,   '%H:%M:%S.%f') - datetime.datetime(1900,1,1)
-            t_pred   = datetime.datetime.strptime(wsc_t_pred,  '%H:%M:%S') - datetime.datetime(1900,1,1)
-            t_deconv = datetime.datetime.strptime(wsc_t_deconv,'%H:%M:%S') - datetime.datetime(1900,1,1)
-
-    return wsc_totvis, wsc_gridvis, t_inv.total_seconds(), t_pred.total_seconds(), t_deconv.total_seconds()
-
-
-def get_casa_info_from_log(log_file):
-    lines = open(log_file, "r").readlines()
-    for line in lines:
-        #print(line)
-        line = line.strip()
-        patt = "NRows selected :\s*"
-        if re.search(patt, line):
-            casa_totvis = re.split(patt, line)[-1]
-        patt = "Task tclean complete.\s*"
-        if re.search(patt, line):
-            casa_t = re.split(patt, line)[-1]
-            casa_ts, casa_te = re.split("\s*Start time:\s*|\s*End time:\s*", casa_t)[-2:]
-            #print(casa_ts, casa_te)
-            casa_ts = datetime.datetime.strptime(casa_ts, '%Y-%m-%d %H:%M:%S.%f')
-            casa_te = datetime.datetime.strptime(casa_te, '%Y-%m-%d %H:%M:%S.%f')
-            #print('casa_ts', casa_ts)
-            #print('casa_te', casa_te)
-    #print("casa_totvis:", casa_totvis)
-    #print("casa_t_inv :", (casa_te - casa_ts).total_seconds())
-    return casa_totvis, (casa_te - casa_ts).total_seconds()
-    sys.exit(0)
+import wscleantb
 
 
 def read_fits_file(fits_file):
@@ -81,7 +40,7 @@ def plot_bluebild_wsclean(bipp_grid_npy, bipp_data_npy, bipp_json, fits_file, lo
     print("==========================================================")
 
     header, data = read_fits_file(fits_file)
-    totvis, gridvis, t_inv, t_pred, t_deconv = get_wsclean_info_from_log(log_file)
+    totvis, gridvis, t_inv, t_pred, t_deconv = wscleantb.get_wsclean_info_from_log(log_file)
 
     title = f"WSClean visibilities: total {totvis}, effective after weighting {gridvis}\n"
     title = f"WSClean times: inv {t_inv:.2f}, pred {t_pred:.2f}, deconv {t_deconv:.2f}"
@@ -98,7 +57,7 @@ def plot_wsclean_casa(wsc_fits, wsc_log, casa_fits, casa_log):
     casa_totvis, casa_t_inv = get_casa_info_from_log(casa_log)
 
     wsc_header, wsc_data = read_fits_file(wsc_fits)
-    wsc_totvis, wsc_gridvis, wsc_t_inv, wsc_t_pred, wsc_t_deconv = get_wsclean_info_from_log(wsc_log)
+    wsc_totvis, wsc_gridvis, wsc_t_inv, wsc_t_pred, wsc_t_deconv = wscleantb.get_wsclean_info_from_log(wsc_log)
 
     title = f"WSClean / CASA visibilities: {wsc_totvis} / {casa_totvis}"
 
