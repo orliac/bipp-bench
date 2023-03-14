@@ -139,8 +139,13 @@ SBATCH_SH=sbatch_generic.sh
 cp -v ${pipeline}_${algo}_${package}.py $out_dir
 cp -v $SBATCH_SH                        $out_dir
 cp -v bipptb.py                         $out_dir
+cp -v wscleantb.py                      $out_dir
+cp -v casatb.py                         $out_dir
 cp -v casa_tclean.py                    $out_dir
 cp -v plots.py                          $out_dir
+cp -v wsclean_log_to_json.py            $out_dir
+cp -v casa_log_to_json.py               $out_dir
+
 cd $out_dir
 
 slurm_opts=$(sed "s/|/ /g" <<< $slurm_opts)

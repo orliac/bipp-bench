@@ -95,11 +95,15 @@ $CASA \
     --out_name ${CASA_OUT} \
     --imsize ${WSC_SIZE} \
     --cell ${WSC_SCALE} \
-    --spw ':0'
+    --spw '*:0'
 echo; echo
 
 source ${ENV_SPACK}/activate.sh
 source ${VENV}/bin/activate
+
+echo
+python $SOL_DIR/casa_log_to_json.py --casa_log ${CASA_LOG}
+echo
 
 echo
 echo =============================================================================
@@ -120,6 +124,9 @@ time wsclean \
     -name ${WSCLEAN_OUT} \
     ${MS_FILE} \
     | tee ${WSCLEAN_LOG}
+
+echo
+python $SOL_DIR/wsclean_log_to_json.py --wsc_log ${WSCLEAN_LOG}
 echo
 
 cd -
