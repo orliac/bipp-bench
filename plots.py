@@ -8,6 +8,7 @@ import datetime
 from mpl_toolkits.axes_grid1 import make_axes_locatable
 from astropy.io import fits
 import wscleantb
+import casatb
 
 
 def read_fits_file(fits_file):
@@ -26,7 +27,7 @@ def plot_bluebild_casa(bipp_grid_npy, bipp_data_npy, bipp_json, fits_file, log_f
     print("==========================================================")
 
     header, data = read_fits_file(fits_file)
-    totvis, t_inv = get_casa_info_from_log(log_file)
+    totvis, t_inv = casatb.get_casa_info_from_log(log_file)
 
     title  = f"CASA visibilities: total {totvis}\n"
     title += f"CASA times: inv {t_inv:.2f}"
@@ -54,7 +55,7 @@ def plot_wsclean_casa(wsc_fits, wsc_log, casa_fits, casa_log):
     print("==========================================================")
 
     casa_header, casa_data = read_fits_file(casa_fits)
-    casa_totvis, casa_t_inv = get_casa_info_from_log(casa_log)
+    casa_totvis, casa_t_inv = casatb.get_casa_info_from_log(casa_log)
 
     wsc_header, wsc_data = read_fits_file(wsc_fits)
     wsc_totvis, wsc_gridvis, wsc_t_inv, wsc_t_pred, wsc_t_deconv = wscleantb.get_wsclean_info_from_log(wsc_log)
