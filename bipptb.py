@@ -4,7 +4,6 @@ import argparse
 from pathlib import Path
 import numpy
 import json
-#import bluebild
 
 
 def dump_json(info):
@@ -14,7 +13,8 @@ def dump_json(info):
             'ifpe': info['ifpe_e'] - info['ifpe_s'],
             'ifim': info['ifim_e'] - info['ifim_s'],
             'sfpe': info['sfpe_e'] - info['sfpe_s'],
-            'sfim': info['sfim_e'] - info['sfim_s']
+            'sfim': info['sfim_e'] - info['sfim_s'],
+            'tot' : info['tot_e']  - info['tot_s'],
             #'ifpe_vis': t_ifpe_vis,
             #'ifim_vis': t_ifim_vis,
         },
