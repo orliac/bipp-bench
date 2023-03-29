@@ -3,6 +3,7 @@ import os
 import re
 import numpy as np
 import matplotlib.pyplot as plt
+from matplotlib.font_manager import FontProperties
 import json
 import argparse
 import datetime
@@ -30,8 +31,7 @@ def plot_bluebild_casa(bipp_grid_npy, bipp_data_npy, bipp_json, fits_file, log_f
     header, data = read_fits_file(fits_file)
     totvis, t_inv = casatb.get_casa_info_from_log(log_file)
 
-    title  = f"CASA visibilities: total {totvis}\n"
-    title += f"CASA times: inv {t_inv:.2f}"
+    title  = f"{'CASA':8s}: {int(totvis):7d} vis   runtime: {t_inv:6.2f} sec"
 
     plot_bluebild_vs_fits(bipp_grid_npy, bipp_data_npy, bipp_json, 'CASA', data, title)
 
@@ -44,8 +44,7 @@ def plot_bluebild_wsclean(bipp_grid_npy, bipp_data_npy, bipp_json, fits_file, lo
     header, data = read_fits_file(fits_file)
     totvis, gridvis, t_inv, t_pred, t_deconv = wscleantb.get_wsclean_info_from_log(log_file)
 
-    title = f"WSClean visibilities: total {totvis}, effective after weighting {gridvis}\n"
-    title = f"WSClean times: inv {t_inv:.2f}, pred {t_pred:.2f}, deconv {t_deconv:.2f}"
+    title  = f"{'WSClean':8s}: {int(totvis):7d} vis   runtime: {t_inv:6.2f} sec"
 
     plot_bluebild_vs_fits(bipp_grid_npy, bipp_data_npy, bipp_json, 'WSClean', data, title)
 
@@ -138,6 +137,8 @@ def plot_bluebild_vs_fits(bipp_grid_npy, bipp_data_npy, bipp_json, fits_name, fi
     # BIPP json file
     json_file = open(bipp_json)
     json_data = json.load(json_file)
+    bb_vis = json_data['visibilities']['ifim']
+    bb_tot = json_data['timings']['tot']
 
     # Produce different images including additional energy levels
     #
@@ -145,7 +146,7 @@ def plot_bluebild_vs_fits(bipp_grid_npy, bipp_data_npy, bipp_json, fits_name, fi
         
         fig, ax = plt.subplots(ncols=3, figsize=(25,12))
         plt.suptitle(f"Bluebild energy levels from 0 to {nlev - 1}, " +
-                     f"{json_data['visibilities']['ifim']} visibilities\n" +
+                     f"{bb_vis} visibilities\n" +
                      fits_title, fontsize=22)
 
         bb_eq_cum = np.zeros([bipp_data.shape[1], bipp_data.shape[2]])
@@ -186,16 +187,17 @@ def plot_bluebild_vs_fits(bipp_grid_npy, bipp_data_npy, bipp_json, fits_name, fi
         plt.tight_layout()
         
         fig.savefig(f"Bluebild_{fits_name}_0-"+ str(nlev - 1) + '_normalized.png')
-
+        
 
     # Produce different images including additional energy levels
     #
     for nlev in range(1, bipp_data.shape[0] + 1):
         
         fig, ax = plt.subplots(ncols=3, figsize=(25,12))
-        plt.suptitle(f"Bluebild energy levels from 0 to {nlev - 1}, " +
-                     f"{json_data['visibilities']['ifim']} visibilities\n" +
-                     fits_title, fontsize=22)
+        bb_title = f"{'Bluebild':8s}: {int(bb_vis):7d} vis   runtime: {bb_tot:6.2f} sec  (energy levels: 0 to {nlev - 1})"
+        
+        fp = FontProperties(family="monospace", size=22, weight="bold")
+        plt.suptitle(bb_title + "\n" + fits_title, x=0.25, y=0.92, ha='left').set_fontproperties(fp)
 
         bb_eq_cum = np.zeros([bipp_data.shape[1], bipp_data.shape[2]])
         for i in range(0, nlev):
@@ -233,6 +235,51 @@ def plot_bluebild_vs_fits(bipp_grid_npy, bipp_data_npy, bipp_json, fits_name, fi
         
         fig.savefig(f"Bluebild_{fits_name}_0-"+ str(nlev - 1) + '.png')
 
+
+    # =================================================================
+    # Bluebild / number of visibilities + ratio to fits
+    # =================================================================
+    fig, ax = plt.subplots(ncols=3, figsize=(25,12))
+    bb_title = f"{'Bluebild':8s}: {int(bb_vis):7d} vis   runtime: {bb_tot:6.2f} sec"
+        
+    fp = FontProperties(family="monospace", size=22, weight="bold")
+    plt.suptitle(bb_title + "\n" + fits_title, x=0.33, y=0.92, ha='left').set_fontproperties(fp)
+
+    bb_eq_cum = np.zeros([bipp_data.shape[1], bipp_data.shape[2]])
+    for i in range(0, nlev):
+        bb_eq_cum += bipp_data[i,:,:]
+        #print(f"-I- level {i} bluebild min, max: {np.min(bb_eq_cum)}, {np.max(bb_eq_cum)}")
+    print(f"-I- bluebild min, max: {np.min(bb_eq_cum):.3f}, {np.max(bb_eq_cum):.3f}")
+
+    # Divide by number of visibilities
+    bb_eq_cum  = np.fliplr(bb_eq_cum) / bb_vis
+        
+    im0 = ax[0].imshow(bb_eq_cum)
+    ax[0].set_title("Bluebild LSQ dirty / nb. vis", fontsize=20)
+    divider = make_axes_locatable(ax[0])
+    cax = divider.append_axes("right", size="5%", pad=0.05)
+    plt.colorbar(im0, cax=cax)
+        
+    print(f"-I- wsclean min, max: {np.min(fits_data):.3f}, {np.max(fits_data):.3f}")
+
+    im1 = ax[1].imshow(fits_data)
+    ax[1].set_title(f"{fits_name} dirty", fontsize=20)
+    divider = make_axes_locatable(ax[1])
+    cax = divider.append_axes("right", size="5%", pad=0.05)
+    plt.colorbar(im1, cax=cax)
+        
+    diff = bb_eq_cum - fits_data
+    print(f"-I- (Bluebild minus {fits_name}) min, max: {np.min(diff):.3f}, {np.max(diff):.3f}")
+    im2 = ax[2].imshow(diff)
+    ax[2].set_title(f"Bluebild minus {fits_name}", fontsize=20)
+    divider = make_axes_locatable(ax[2])
+    cax = divider.append_axes("right", size="5%", pad=0.05)
+    plt.colorbar(im2, cax=cax)
+    
+    plt.tight_layout()
+    
+    fig.savefig(f"Bluebild_{fits_name}_vis_scaled.png")
+
     json_file.close()
 
 
@@ -257,6 +304,26 @@ def plot_beamweight_matrix(W, outdir):
     plt.xlabel('Station index')
     plt.ylabel('Station index')
     plt.savefig(os.path.join(outdir, 'W_imag.png'))
+    
+    print(abs(W.data).diagonal())
+    fig = plt.figure()
+    ax = fig.add_subplot(111)
+    cax = ax.matshow(abs(W.data))
+    plt.title(f"W.abs (sum diag = {abs(W.data).diagonal().sum():.3f})")
+    fig.colorbar(cax)
+    plt.xlabel('Station index')
+    plt.ylabel('Station index')
+    plt.savefig(os.path.join(outdir, 'W_abs.png'))
+    
+    print(np.angle(W.data).diagonal())
+    fig = plt.figure()
+    ax = fig.add_subplot(111)
+    cax = ax.matshow(np.angle(W.data))
+    plt.title(f"W.phase (sum diag = {np.angle(W.data).diagonal().sum():.3f})")
+    fig.colorbar(cax)
+    plt.xlabel('Station index')
+    plt.ylabel('Station index')
+    plt.savefig(os.path.join(outdir, 'W_phase.png'))
     
 
 def plot_visibility_matrix(S, outdir):
@@ -321,7 +388,9 @@ if __name__ == "__main__":
     parser.add_argument('--casa_log',  help='CASA log file')
     args = parser.parse_args()
 
-    do_bb = False
+    do_bb   = False
+    do_wsc  = False
+    do_casa = False
     if args.bb_grid   and args.bb_data and args.bb_json: do_bb   = True
     if args.wsc_fits  and args.wsc_log:                  do_wsc  = True 
     if args.casa_fits and args.casa_log:                 do_casa = True
