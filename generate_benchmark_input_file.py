@@ -34,27 +34,26 @@ if args.package == "bipp" and args.proc_unit == "none":
 #pixWidths = [256, 512, 1024, 2048, 4096]
 #nStations = [15, 30, 60]
 
-nLevels   = [4]
+nLevels   = [1] #, 2, 3, 4, 5, 6, 7, 8, 9, 10] #, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20]
 pixWidths = [1024]
 nStations = [0]   # 0 == None == All
 
 with open(args.in_file, 'w') as f:
     for nsta in np.sort(nStations):
         for nlev in np.sort(nLevels):
-            cli  = f"--cluster {args.cluster} --processing_unit {args.proc_unit} --compiler {args.compiler} "
-            cli += f"--precision {args.precision} --package {args.package} --nlev {nlev}  --wsc_scale {args.wsc_scale} "
-            cli += f"--ms_file {args.ms_file} --time_slice_pe {args.time_slice_pe} --time_slice_im {args.time_slice_im} "
-            cli += f"--sigma {args.sigma} "
+            cli_  = f"--cluster {args.cluster} --processing_unit {args.proc_unit} --compiler {args.compiler} "
+            cli_ += f"--precision {args.precision} --package {args.package} --nlev {nlev}  --wsc_scale {args.wsc_scale} "
+            cli_ += f"--ms_file {args.ms_file} --time_slice_pe {args.time_slice_pe} --time_slice_im {args.time_slice_im} "
+            cli_ += f"--sigma {args.sigma} "
             
             if nsta == 0: # case all stations
                 for pixw in np.sort(pixWidths):
                     outdir = os.path.join(args.out_dir, str(nsta), str(nlev), str(pixw))
-                    cli += f"--nsta 0 --pixw {pixw} --output_directory {outdir}\n"
+                    cli = cli_ + f"--nsta 0 --pixw {pixw} --output_directory {outdir}\n"
                     f.write(cli)
             else:
                 if nlev <= nsta:
                     for pixw in np.sort(pixWidths):
                         outdir = os.path.join(args.out_dir, str(nsta), str(nlev), str(pixw))
-                        cli += f"--nsta {nsta} --pixw {pixw} --output_directory {outdir}\n"
+                        cli = cli_ + f"--nsta {nsta} --pixw {pixw} --output_directory {outdir}\n"
                         f.write(cli)
-f.close()
