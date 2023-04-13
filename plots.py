@@ -347,30 +347,67 @@ def plot_complex_matrix(X, filename, outdir, title, xlabel, ylabel):
     plt.close()
 
 
-def plot_uvw(uvw, filename, outdir, title):
+def plot_uvw(uvw, pixw, filename, outdir, title):
 
-    print(uvw.shape)
+    if pixw % 2 != 0:
+        raise Exception("pixw must be modulo 2!")
+
     uvw = np.reshape(uvw, (-1,3))
-    print(uvw.shape)
-    print(uvw)
 
-    print("u:", uvw[:,0])
-    print("v:", uvw[:,1])
+    # Remove zero baselines
+    rows_to_del = []
+    for i in range(0, uvw.shape[0]):
+        if uvw[i,:].all() == 0:
+            rows_to_del.append(i)
+    print("-W- deleting zero baselines at indices:", rows_to_del)
+    uvw = np.delete(uvw, rows_to_del, axis=0)
+       
+    print("uvw.shape =", uvw.shape)
 
-    xy_max = int(np.ceil((max(max(abs(uvw[:,0])), max(abs(uvw[:,1]))) + 0.5)))
-    print("xy_max =", xy_max)
+    ui = np.rint(uvw[:,0])
+    vi = np.rint(uvw[:,1])
+    uvi_max = int(max(np.amax(ui), np.amax(vi)))
+    print("uvi_max =", uvi_max)
+    scalor = pixw / 2 / uvi_max
+    print("scalor = ", scalor)
+    uv_map = np.zeros((pixw+1, pixw+1))
+    print(uv_map, uv_map.dtype, uv_map.shape)
 
-    Z = np.zeros(xy_max+1, xy_max+1)
-    Zx, Zy = np.meshgrid(np.arange(-xy_max,xy_max+1), np.arange(-xy_max, xy_max+1))
-    Z[0][0] = 3
-    print(Z)
+    already_set = 0
+    for i in range(0, len(uvw[:,0])):
+        if i < 10:
+            print(" ... adding:", ui[i], vi[i], uvi_max, i)
+        ix = int(np.rint((ui[i]+uvi_max)*scalor))
+        iy = int(np.rint((vi[i]+uvi_max)*scalor))
+        if uv_map[ix][iy] == 1:
+            already_set += 1
+        else:
+            uv_map[ix][iy] = 1
+    print(f"-W- {already_set} points already previously set. Visibilities = {uvw.shape[0]} - {already_set} = {uvw.shape[0] - already_set}")
 
-    fig, ax = plt.subplots(1, 1, figsize=(12,12))
-    fig.suptitle(title, fontsize=22)
+    fig, ax = plt.subplots(1, 3, figsize=(27, 10))
+    fig.suptitle(f"PSF\n(normalized by sum of unitary weights, i.e. nb of unique \"gridded\" baselines - {uvw.shape[0] - already_set})", fontsize=22)
 
-    plt.scatter(x=uvw[:,0], y=uvw[:,1], cmap='seismic')
-    
-    plt.savefig(os.path.join(outdir, filename + '.png'))
+    im = ax[0].imshow(np.abs(np.fft.fftshift(np.fft.fft2(uv_map))) / (uvw.shape[0] - already_set))
+    divider = make_axes_locatable(ax[0])
+    cax = divider.append_axes("right", size="5%", pad=0.05)
+    fig.colorbar(im, cax=cax)
+
+    im = ax[1].imshow(np.angle(np.fft.fftshift(np.fft.fft2(uv_map))))
+    divider = make_axes_locatable(ax[1])
+    cax = divider.append_axes("right", size="5%", pad=0.05)
+    fig.colorbar(im, cax=cax)
+
+    im = ax[2].imshow(uv_map)
+    divider = make_axes_locatable(ax[2])
+    cax = divider.append_axes("right", size="5%", pad=0.05)
+    fig.colorbar(im, cax=cax)
+
+    ax[0].set_title(f"Amplitude [?]")
+    ax[1].set_title(f"Phase [rad]")
+    ax[2].set_title(f"uv map")
+
+    plt.savefig(os.path.join(outdir, 'PSF_' + filename + '.png'))
     plt.close()
 
 
