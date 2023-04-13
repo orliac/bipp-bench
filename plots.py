@@ -131,7 +131,7 @@ def plot_bluebild_vs_fits(bipp_grid_npy, bipp_data_npy, bipp_json, fits_name, fi
 
     # BIPP npy data
     bipp_data = np.load(bipp_data_npy)
-    print("-I- bipp data:", bipp_data.dtype, bipp_data.shape)
+    print("-I- Bluebild data:", bipp_data.dtype, bipp_data.shape)
     nlev = bipp_data.shape[0]
 
     # BIPP json file
@@ -140,100 +140,95 @@ def plot_bluebild_vs_fits(bipp_grid_npy, bipp_data_npy, bipp_json, fits_name, fi
     bb_vis = json_data['visibilities']['ifim']
     bb_tot = json_data['timings']['tot']
 
-    # Produce different images including additional energy levels
+    fits_data = fits_data[0,0,:,:]
+    print(f"-I- {fits_name} min, max: {np.min(fits_data):.3f}, {np.max(fits_data):.3f}")
+
+
+    # Shifted + normalized intensity
     #
-    for nlev in range(1, bipp_data.shape[0] + 1):
+    fig, ax = plt.subplots(ncols=3, figsize=(25,12))
+    bb_title = f"{'Bluebild':8s}: {int(bb_vis):7d} vis   runtime: {bb_tot:6.2f} sec"
         
-        fig, ax = plt.subplots(ncols=3, figsize=(25,12))
-        plt.suptitle(f"Bluebild energy levels from 0 to {nlev - 1}, " +
-                     f"{bb_vis} visibilities\n" +
-                     fits_title, fontsize=22)
+    fp = FontProperties(family="monospace", size=22, weight="bold")
+    plt.suptitle(bb_title + "\n" + fits_title, x=0.25, y=0.92, ha='left').set_fontproperties(fp)
 
-        bb_eq_cum = np.zeros([bipp_data.shape[1], bipp_data.shape[2]])
-        for i in range(0, nlev):
-            bb_eq_cum += bipp_data[i,:,:]
-            #print(f"-I- level {i} bluebild min, max: {np.min(bb_eq_cum)}, {np.max(bb_eq_cum)}")
-        print(f"-I- bluebild min, max: {np.min(bb_eq_cum):.3f}, {np.max(bb_eq_cum):.3f}")
+    bb_eq_cum = np.zeros([bipp_data.shape[1], bipp_data.shape[2]])
+    for i in range(0, nlev):
+        bb_eq_cum += bipp_data[i,:,:]
+        print(f"-I- .. Bluebild energy level {i} min, max: {np.min(bipp_data[i,:,:]):.3f}, {np.max(bipp_data[i,:,:]):.3f}")
+    print(f"-I- Bluebild cum energy levels [0, {nlev-1}]: min, max: {np.min(bb_eq_cum):.3f}, {np.max(bb_eq_cum):.3f}," +
+          f" vis. scaled = {np.min(bb_eq_cum)/bb_vis:.3f}, {np.max(bb_eq_cum)/bb_vis:.3f}")
 
-        # Align min to 0.0 and normalize
-        bb_eq_cum  = np.fliplr(bb_eq_cum)
-        bb_eq_cum -= np.min(bb_eq_cum)
-        bb_eq_cum /= np.max(bb_eq_cum)
-        
-        im0 = ax[0].imshow(bb_eq_cum)
-        ax[0].set_title("Shifted normalized BB LSQ dirty", fontsize=20)
-        divider = make_axes_locatable(ax[0])
-        cax = divider.append_axes("right", size="5%", pad=0.05)
-        plt.colorbar(im0, cax=cax)
-        
-        print(f"-I- wsclean min, max: {np.min(fits_data[0,0,:,:]):.3f}, {np.max(fits_data[0,0,:,:]):.3f}")
-        normed_fits  = fits_data[0,0,:,:] - np.min(fits_data[0,0,:,:])
-        normed_fits /= np.max(normed_fits)
-        #print(f"min, max fits : {np.min(normed_fits)}, {np.max(normed_fits)}")
-        im1 = ax[1].imshow(normed_fits)
-        ax[1].set_title(f"Shifted normalized {fits_name} dirty", fontsize=20)
-        divider = make_axes_locatable(ax[1])
-        cax = divider.append_axes("right", size="5%", pad=0.05)
-        plt.colorbar(im1, cax=cax)
-        
-        diff = bb_eq_cum - normed_fits
-        print(f"-I- (bluebild - {fits_name}) min, max: {np.min(diff):.3f}, {np.max(diff):.3f}")
-        im2 = ax[2].imshow(diff)
-        ax[2].set_title(f"BB minus {fits_name}", fontsize=20)
-        divider = make_axes_locatable(ax[2])
-        cax = divider.append_axes("right", size="5%", pad=0.05)
-        plt.colorbar(im2, cax=cax)
-        
-        plt.tight_layout()
-        
-        fig.savefig(f"Bluebild_{fits_name}_0-"+ str(nlev - 1) + '_normalized.png')
+    # Align min to 0.0 and normalize
+    bb_eq_cum  = np.fliplr(bb_eq_cum)
+    bb_eq_cum -= np.min(bb_eq_cum)
+    bb_eq_cum /= np.max(bb_eq_cum)
+    print(f"-I- Bluebild normalized cum energy levels [0, {nlev-1}]: min, max: {np.min(bb_eq_cum):.3f}, {np.max(bb_eq_cum):.3f}")
+
+    im0 = ax[0].imshow(bb_eq_cum)
+    ax[0].set_title("Shifted normalized BB LSQ dirty", fontsize=20)
+    divider = make_axes_locatable(ax[0])
+    cax = divider.append_axes("right", size="5%", pad=0.05)
+    plt.colorbar(im0, cax=cax)
+    
+    normed_fits  = fits_data - np.min(fits_data)
+    normed_fits /= np.max(normed_fits)
+    #print(f"min, max fits : {np.min(normed_fits)}, {np.max(normed_fits)}")
+    im1 = ax[1].imshow(normed_fits)
+    ax[1].set_title(f"Shifted normalized {fits_name} dirty", fontsize=20)
+    divider = make_axes_locatable(ax[1])
+    cax = divider.append_axes("right", size="5%", pad=0.05)
+    plt.colorbar(im1, cax=cax)
+    
+    diff = bb_eq_cum - normed_fits
+    print(f"-I- Bluebild normalized minus {fits_name} min, max: {np.min(diff):.3f}, {np.max(diff):.3f}")
+    im2 = ax[2].imshow(diff)
+    ax[2].set_title(f"BB minus {fits_name}", fontsize=20)
+    divider = make_axes_locatable(ax[2])
+    cax = divider.append_axes("right", size="5%", pad=0.05)
+    plt.colorbar(im2, cax=cax)
+    
+    plt.tight_layout()
+    fig.savefig(f"Bluebild_{fits_name}_normalized.png")
         
 
-    # Produce different images including additional energy levels
+    # Raw intensity
     #
-    for nlev in range(1, bipp_data.shape[0] + 1):
-        
-        fig, ax = plt.subplots(ncols=3, figsize=(25,12))
-        bb_title = f"{'Bluebild':8s}: {int(bb_vis):7d} vis   runtime: {bb_tot:6.2f} sec  (energy levels: 0 to {nlev - 1})"
-        
-        fp = FontProperties(family="monospace", size=22, weight="bold")
-        plt.suptitle(bb_title + "\n" + fits_title, x=0.25, y=0.92, ha='left').set_fontproperties(fp)
+    fig, ax = plt.subplots(ncols=3, figsize=(25,12))
+    bb_title = f"{'Bluebild':8s}: {int(bb_vis):7d} vis   runtime: {bb_tot:6.2f} sec"
+    fp = FontProperties(family="monospace", size=22, weight="bold")
+    plt.suptitle(bb_title + "\n" + fits_title, x=0.25, y=0.92, ha='left').set_fontproperties(fp)
 
-        bb_eq_cum = np.zeros([bipp_data.shape[1], bipp_data.shape[2]])
-        for i in range(0, nlev):
-            bb_eq_cum += bipp_data[i,:,:]
-            #print(f"-I- level {i} bluebild min, max: {np.min(bb_eq_cum)}, {np.max(bb_eq_cum)}")
-        print(f"-I- bluebild min, max: {np.min(bb_eq_cum):.3f}, {np.max(bb_eq_cum):.3f}")
+    bb_eq_cum = np.zeros([bipp_data.shape[1], bipp_data.shape[2]])
+    for i in range(0, bipp_data.shape[0]):
+        bb_eq_cum += bipp_data[i,:,:]
 
-        # Align min to 0.0 and normalize
-        bb_eq_cum  = np.fliplr(bb_eq_cum)
+    # Align min to 0.0 and normalize
+    bb_eq_cum  = np.fliplr(bb_eq_cum)
         
-        im0 = ax[0].imshow(bb_eq_cum)
-        ax[0].set_title("Bluebild LSQ dirty", fontsize=20)
-        divider = make_axes_locatable(ax[0])
-        cax = divider.append_axes("right", size="5%", pad=0.05)
-        plt.colorbar(im0, cax=cax)
+    im0 = ax[0].imshow(bb_eq_cum)
+    ax[0].set_title("Bluebild LSQ dirty", fontsize=20)
+    divider = make_axes_locatable(ax[0])
+    cax = divider.append_axes("right", size="5%", pad=0.05)
+    plt.colorbar(im0, cax=cax)
         
-        fits_data = fits_data[0,0,:,:]
-        print(f"-I- wsclean min, max: {np.min(fits_data):.3f}, {np.max(fits_data):.3f}")
-
-        im1 = ax[1].imshow(fits_data)
-        ax[1].set_title(f"{fits_name} dirty", fontsize=20)
-        divider = make_axes_locatable(ax[1])
-        cax = divider.append_axes("right", size="5%", pad=0.05)
-        plt.colorbar(im1, cax=cax)
+    im1 = ax[1].imshow(fits_data)
+    ax[1].set_title(f"{fits_name} dirty", fontsize=20)
+    divider = make_axes_locatable(ax[1])
+    cax = divider.append_axes("right", size="5%", pad=0.05)
+    plt.colorbar(im1, cax=cax)
         
-        diff = bb_eq_cum - fits_data
-        print(f"-I- (Bluebild - {fits_name}) min, max: {np.min(diff):.3f}, {np.max(diff):.3f}")
-        im2 = ax[2].imshow(diff)
-        ax[2].set_title(f"Bluebild LSQ minus {fits_name}", fontsize=20)
-        divider = make_axes_locatable(ax[2])
-        cax = divider.append_axes("right", size="5%", pad=0.05)
-        plt.colorbar(im2, cax=cax)
-        
-        plt.tight_layout()
-        
-        fig.savefig(f"Bluebild_{fits_name}_0-"+ str(nlev - 1) + '.png')
+    diff = bb_eq_cum - fits_data
+    print(f"-I- Bluebild minus {fits_name} min, max: {np.min(diff):.3f}, {np.max(diff):.3f}")
+    im2 = ax[2].imshow(diff)
+    ax[2].set_title(f"Bluebild LSQ minus {fits_name}", fontsize=20)
+    divider = make_axes_locatable(ax[2])
+    cax = divider.append_axes("right", size="5%", pad=0.05)
+    plt.colorbar(im2, cax=cax)
+    
+    plt.tight_layout()
+    
+    fig.savefig(f"Bluebild_{fits_name}.png")
 
 
     # =================================================================
@@ -248,8 +243,6 @@ def plot_bluebild_vs_fits(bipp_grid_npy, bipp_data_npy, bipp_json, fits_name, fi
     bb_eq_cum = np.zeros([bipp_data.shape[1], bipp_data.shape[2]])
     for i in range(0, nlev):
         bb_eq_cum += bipp_data[i,:,:]
-        #print(f"-I- level {i} bluebild min, max: {np.min(bb_eq_cum)}, {np.max(bb_eq_cum)}")
-    print(f"-I- bluebild min, max: {np.min(bb_eq_cum):.3f}, {np.max(bb_eq_cum):.3f}")
 
     # Divide by number of visibilities
     bb_eq_cum  = np.fliplr(bb_eq_cum) / bb_vis
@@ -259,8 +252,6 @@ def plot_bluebild_vs_fits(bipp_grid_npy, bipp_data_npy, bipp_json, fits_name, fi
     divider = make_axes_locatable(ax[0])
     cax = divider.append_axes("right", size="5%", pad=0.05)
     plt.colorbar(im0, cax=cax)
-        
-    print(f"-I- wsclean min, max: {np.min(fits_data):.3f}, {np.max(fits_data):.3f}")
 
     im1 = ax[1].imshow(fits_data)
     ax[1].set_title(f"{fits_name} dirty", fontsize=20)
@@ -269,111 +260,118 @@ def plot_bluebild_vs_fits(bipp_grid_npy, bipp_data_npy, bipp_json, fits_name, fi
     plt.colorbar(im1, cax=cax)
         
     diff = bb_eq_cum - fits_data
-    print(f"-I- (Bluebild minus {fits_name}) min, max: {np.min(diff):.3f}, {np.max(diff):.3f}")
     im2 = ax[2].imshow(diff)
     ax[2].set_title(f"Bluebild minus {fits_name}", fontsize=20)
     divider = make_axes_locatable(ax[2])
     cax = divider.append_axes("right", size="5%", pad=0.05)
     plt.colorbar(im2, cax=cax)
     
-    plt.tight_layout()
-    
+    plt.tight_layout()    
     fig.savefig(f"Bluebild_{fits_name}_vis_scaled.png")
-
     json_file.close()
 
 
-def plot_beamweight_matrix(W, outdir):
+def plot_eigen_vectors(X, filename, outdir, title):
 
-    print(W.data.real.diagonal())
-    fig = plt.figure()
-    ax = fig.add_subplot(111)
-    cax = ax.matshow(W.data.real)
-    plt.title(f"W.real (sum diag = {W.data.real.diagonal().sum():.3f})")
-    fig.colorbar(cax)
-    plt.xlabel('Station index')
-    plt.ylabel('Station index')
-    plt.savefig(os.path.join(outdir, 'W_real.png'))
+    fig, ax = plt.subplots(2, 2, figsize=(12,12))
+    fig.suptitle(title, fontsize=22)
 
-    print(W.data.imag.diagonal())
-    fig = plt.figure()
-    ax = fig.add_subplot(111)
-    cax = ax.matshow(W.data.imag)
-    plt.title(f"W.imag (sum diag = {W.data.imag.diagonal().sum():.3f})")
-    fig.colorbar(cax)
-    plt.xlabel('Station index')
-    plt.ylabel('Station index')
-    plt.savefig(os.path.join(outdir, 'W_imag.png'))
+    im = ax[0,0].matshow(X.real,      cmap = 'seismic')
+    ax[0,0].set_ylabel('aaaa')
+    ax[0,0].tick_params(top=False, labeltop=False, bottom=True, labelbottom=True)
+    divider = make_axes_locatable(ax[0,0])
+    cax = divider.append_axes("right", size="5%", pad=0.05)
+    fig.colorbar(im, cax=cax)
+
+    im = ax[0,1].matshow(X.imag,      cmap = 'seismic')
+    ax[0,1].tick_params(top=False, labeltop=False, bottom=True, labelbottom=True)
+    divider = make_axes_locatable(ax[0,1])
+    cax = divider.append_axes("right", size="5%", pad=0.05)
+    fig.colorbar(im, cax=cax)
+
+    plt.savefig(os.path.join(outdir, filename + '.png'))
+    plt.close()
+
+
+def plot_beamweight_matrix(X, filename, outdir, title):
+    plot_complex_matrix(X, filename, outdir, title, 'Station index', 'Station index')
+
+
+def plot_gram_matrix(X, filename, outdir, title):
+    plot_complex_matrix(X, filename, outdir, title, 'Beam index', 'Beam index')
+
+
+def plot_visibility_matrix(X, filename, outdir, title):    
+    plot_complex_matrix(X, filename, outdir, title, 'Station index', 'Station index')
+
+
+def plot_complex_matrix(X, filename, outdir, title, xlabel, ylabel):
+
+    fig, ax = plt.subplots(2, 2, figsize=(12,12))
+    fig.suptitle(title, fontsize=22)
+
+    im = ax[0,0].matshow(X.real,      cmap = 'seismic')
+    ax[0,0].set_ylabel(ylabel)
+    ax[0,0].tick_params(top=False, labeltop=False, bottom=True, labelbottom=True)
+    divider = make_axes_locatable(ax[0,0])
+    cax = divider.append_axes("right", size="5%", pad=0.05)
+    fig.colorbar(im, cax=cax)
+
+    im = ax[0,1].matshow(X.imag,      cmap = 'seismic')
+    ax[0,1].tick_params(top=False, labeltop=False, bottom=True, labelbottom=True)
+    divider = make_axes_locatable(ax[0,1])
+    cax = divider.append_axes("right", size="5%", pad=0.05)
+    fig.colorbar(im, cax=cax)
+
+    im = ax[1,0].matshow(abs(X),      cmap = 'seismic')
+    ax[1,0].set_xlabel(xlabel)
+    ax[1,0].set_ylabel(ylabel)
+    ax[1,0].tick_params(top=False, labeltop=False, bottom=True, labelbottom=True)
+    divider = make_axes_locatable(ax[1,0])
+    cax = divider.append_axes("right", size="5%", pad=0.05)
+    fig.colorbar(im, cax=cax)
+
+    im = ax[1,1].matshow(np.angle(X), cmap = 'seismic')
+    ax[1,1].set_xlabel(xlabel)
+    ax[1,1].tick_params(top=False, labeltop=False, bottom=True, labelbottom=True)
+    divider = make_axes_locatable(ax[1,1])
+    cax = divider.append_axes("right", size="5%", pad=0.05)
+    fig.colorbar(im, cax=cax)
+
+    ax[0,0].set_title(f"Real (sum diag = {X.real.diagonal().sum():.3f})")
+    ax[0,1].set_title(f"Imag (sum diag = {X.imag.diagonal().sum():.3f})")
+    ax[1,0].set_title(f"Amplitude (sum = {abs(X).sum():.3f}, sum diag = {abs(X).diagonal().sum():.3f})")
+    ax[1,1].set_title(f"Phase (sum diag = {np.angle(X).diagonal().sum():.3f})")
+
+    plt.savefig(os.path.join(outdir, filename + '.png'))
+    plt.close()
+
+
+def plot_uvw(uvw, filename, outdir, title):
+
+    print(uvw.shape)
+    uvw = np.reshape(uvw, (-1,3))
+    print(uvw.shape)
+    print(uvw)
+
+    print("u:", uvw[:,0])
+    print("v:", uvw[:,1])
+
+    xy_max = int(np.ceil((max(max(abs(uvw[:,0])), max(abs(uvw[:,1]))) + 0.5)))
+    print("xy_max =", xy_max)
+
+    Z = np.zeros(xy_max+1, xy_max+1)
+    Zx, Zy = np.meshgrid(np.arange(-xy_max,xy_max+1), np.arange(-xy_max, xy_max+1))
+    Z[0][0] = 3
+    print(Z)
+
+    fig, ax = plt.subplots(1, 1, figsize=(12,12))
+    fig.suptitle(title, fontsize=22)
+
+    plt.scatter(x=uvw[:,0], y=uvw[:,1], cmap='seismic')
     
-    print(abs(W.data).diagonal())
-    fig = plt.figure()
-    ax = fig.add_subplot(111)
-    cax = ax.matshow(abs(W.data))
-    plt.title(f"W.abs (sum diag = {abs(W.data).diagonal().sum():.3f})")
-    fig.colorbar(cax)
-    plt.xlabel('Station index')
-    plt.ylabel('Station index')
-    plt.savefig(os.path.join(outdir, 'W_abs.png'))
-    
-    print(np.angle(W.data).diagonal())
-    fig = plt.figure()
-    ax = fig.add_subplot(111)
-    cax = ax.matshow(np.angle(W.data))
-    plt.title(f"W.phase (sum diag = {np.angle(W.data).diagonal().sum():.3f})")
-    fig.colorbar(cax)
-    plt.xlabel('Station index')
-    plt.ylabel('Station index')
-    plt.savefig(os.path.join(outdir, 'W_phase.png'))
-    
-
-def plot_visibility_matrix(S, outdir):
-
-    print("-I- S.data.real")
-    print(S.data.real.diagonal())
-    print(S.data.real)
-    fig = plt.figure()
-    ax = fig.add_subplot(111)
-    cax = ax.matshow(S.data.real, cmap = 'seismic')
-    plt.title(f"S.real (sum diag = {S.data.real.diagonal().sum():.3f})")
-    fig.colorbar(cax)
-    plt.xlabel('Station index')
-    plt.ylabel('Station index')
-    plt.savefig(os.path.join(outdir, 'S_real.png'))
-
-    print("-I- S.data.imag")
-    print(S.data.imag.diagonal())
-    print(S.data.imag)
-    fig = plt.figure()
-    ax = fig.add_subplot(111)
-    cax = ax.matshow(S.data.imag, cmap = 'seismic')
-    plt.title(f"S.imag (sum diag = {S.data.imag.diagonal().sum():.3f})")
-    fig.colorbar(cax)
-    plt.xlabel('Station index')
-    plt.ylabel('Station index')
-    plt.savefig(os.path.join(outdir, 'S_imag.png'))
-
-    print("-I- S.data.abs")
-    print(abs(S.data))
-    fig = plt.figure()
-    ax = fig.add_subplot(111)
-    cax = ax.matshow(abs(S.data), cmap = 'seismic')
-    plt.title(f"S.abs (sum diag = {abs(S.data).diagonal().sum():.3f})")
-    fig.colorbar(cax)
-    plt.xlabel('Station index')
-    plt.ylabel('Station index')
-    plt.savefig(os.path.join(outdir, 'S_abs.png'))
-
-    print("-I- S.data.angle")
-    print(np.angle(S.data))
-    fig = plt.figure()
-    ax = fig.add_subplot(111)
-    cax = ax.matshow(np.angle(S.data), cmap = 'seismic')
-    plt.title(f"S.phase (sum diag = {np.angle(S.data).diagonal().sum():.3f})")
-    fig.colorbar(cax)
-    plt.xlabel('Station index')
-    plt.ylabel('Station index')
-    plt.savefig(os.path.join(outdir, 'S_phase.png'))
-
+    plt.savefig(os.path.join(outdir, filename + '.png'))
+    plt.close()
 
 
 if __name__ == "__main__":
