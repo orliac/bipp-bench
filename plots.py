@@ -18,8 +18,8 @@ def read_fits_file(fits_file):
     print("-I- FITS hdul.info()\n", hdul.info())
     header = hdul[0].header
     data   = hdul[0].data
-    print("-I- FITS header", header)
-    print("-I- FITS data.shape:", data.shape)
+    #print("-I- FITS header", header)
+    #print("-I- FITS data.shape:", data.shape)
     return header, data
 
 
@@ -36,7 +36,7 @@ def plot_bluebild_casa(bipp_grid_npy, bipp_data_npy, bipp_json, fits_file, log_f
     plot_bluebild_vs_fits(bipp_grid_npy, bipp_data_npy, bipp_json, 'CASA', data, title)
 
 
-def plot_bluebild_wsclean(bipp_grid_npy, bipp_data_npy, bipp_json, fits_file, log_file):
+def plot_bluebild_wsclean(bipp_grid_npy, bipp_data_npy, bipp_json, fits_file, log_file, outname, outdir):
     print("==========================================================")
     print(" Plotting Bluebild vs WSClean")
     print("==========================================================")
@@ -46,7 +46,7 @@ def plot_bluebild_wsclean(bipp_grid_npy, bipp_data_npy, bipp_json, fits_file, lo
 
     title  = f"{'WSClean':8s}: {int(totvis):7d} vis   runtime: {t_inv:6.2f} sec"
 
-    plot_bluebild_vs_fits(bipp_grid_npy, bipp_data_npy, bipp_json, 'WSClean', data, title)
+    plot_bluebild_vs_fits(bipp_grid_npy, bipp_data_npy, bipp_json, 'WSClean', data, title, outname, outdir)
 
 
 def plot_wsclean_casa(wsc_fits, wsc_log, casa_fits, casa_log):
@@ -127,7 +127,8 @@ def plot_wsclean_casa(wsc_fits, wsc_log, casa_fits, casa_log):
     fig.savefig("WSClean_CASA_shifted_normalized.png")
 
 
-def plot_bluebild_vs_fits(bipp_grid_npy, bipp_data_npy, bipp_json, fits_name, fits_data, fits_title):
+def plot_bluebild_vs_fits(bipp_grid_npy, bipp_data_npy, bipp_json, fits_name, fits_data, fits_title,
+                          outname, outdir):
 
     # BIPP npy data
     bipp_data = np.load(bipp_data_npy)
@@ -160,10 +161,11 @@ def plot_bluebild_vs_fits(bipp_grid_npy, bipp_data_npy, bipp_json, fits_name, fi
           f" vis. scaled = {np.min(bb_eq_cum)/bb_vis:.3f}, {np.max(bb_eq_cum)/bb_vis:.3f}")
 
     # Align min to 0.0 and normalize
-    bb_eq_cum  = np.fliplr(bb_eq_cum)
+    if args.flip_lr:
+        bb_eq_cum  = np.fliplr(bb_eq_cum)
     bb_eq_cum -= np.min(bb_eq_cum)
     bb_eq_cum /= np.max(bb_eq_cum)
-    print(f"-I- Bluebild normalized cum energy levels [0, {nlev-1}]: min, max: {np.min(bb_eq_cum):.3f}, {np.max(bb_eq_cum):.3f}")
+    #print(f"-I- Bluebild normalized cum energy levels [0, {nlev-1}]: min, max: {np.min(bb_eq_cum):.3f}, {np.max(bb_eq_cum):.3f}")
 
     im0 = ax[0].imshow(bb_eq_cum)
     ax[0].set_title("Shifted normalized BB LSQ dirty", fontsize=20)
@@ -181,7 +183,7 @@ def plot_bluebild_vs_fits(bipp_grid_npy, bipp_data_npy, bipp_json, fits_name, fi
     plt.colorbar(im1, cax=cax)
     
     diff = bb_eq_cum - normed_fits
-    print(f"-I- Bluebild normalized minus {fits_name} min, max: {np.min(diff):.3f}, {np.max(diff):.3f}")
+    #print(f"-I- Bluebild normalized minus {fits_name} min, max: {np.min(diff):.3f}, {np.max(diff):.3f}")
     im2 = ax[2].imshow(diff)
     ax[2].set_title(f"BB minus {fits_name}", fontsize=20)
     divider = make_axes_locatable(ax[2])
@@ -189,7 +191,7 @@ def plot_bluebild_vs_fits(bipp_grid_npy, bipp_data_npy, bipp_json, fits_name, fi
     plt.colorbar(im2, cax=cax)
     
     plt.tight_layout()
-    fig.savefig(f"Bluebild_{fits_name}_normalized.png")
+    fig.savefig(os.path.join(outdir, f"{outname}_Bluebild_{fits_name}_normalized.png"))
         
 
     # Raw intensity
@@ -204,7 +206,8 @@ def plot_bluebild_vs_fits(bipp_grid_npy, bipp_data_npy, bipp_json, fits_name, fi
         bb_eq_cum += bipp_data[i,:,:]
 
     # Align min to 0.0 and normalize
-    bb_eq_cum  = np.fliplr(bb_eq_cum)
+    if args.flip_lr:
+        bb_eq_cum  = np.fliplr(bb_eq_cum)
         
     im0 = ax[0].imshow(bb_eq_cum)
     ax[0].set_title("Bluebild LSQ dirty", fontsize=20)
@@ -219,7 +222,7 @@ def plot_bluebild_vs_fits(bipp_grid_npy, bipp_data_npy, bipp_json, fits_name, fi
     plt.colorbar(im1, cax=cax)
         
     diff = bb_eq_cum - fits_data
-    print(f"-I- Bluebild minus {fits_name} min, max: {np.min(diff):.3f}, {np.max(diff):.3f}")
+    #print(f"-I- Bluebild minus {fits_name} min, max: {np.min(diff):.3f}, {np.max(diff):.3f}")
     im2 = ax[2].imshow(diff)
     ax[2].set_title(f"Bluebild LSQ minus {fits_name}", fontsize=20)
     divider = make_axes_locatable(ax[2])
@@ -228,7 +231,7 @@ def plot_bluebild_vs_fits(bipp_grid_npy, bipp_data_npy, bipp_json, fits_name, fi
     
     plt.tight_layout()
     
-    fig.savefig(f"Bluebild_{fits_name}.png")
+    fig.savefig(os.path.join(outdir, f"{outname}_Bluebild_{fits_name}.png"))
 
 
     # =================================================================
@@ -245,8 +248,12 @@ def plot_bluebild_vs_fits(bipp_grid_npy, bipp_data_npy, bipp_json, fits_name, fi
         bb_eq_cum += bipp_data[i,:,:]
 
     # Divide by number of visibilities
-    bb_eq_cum  = np.fliplr(bb_eq_cum) / bb_vis
-        
+    bb_eq_cum /= bb_vis
+    if args.flip_lr:
+        bb_eq_cum  = np.fliplr(bb_eq_cum)
+    if args.flip_ud:
+        bb_eq_cum  = np.flipud(bb_eq_cum)
+
     im0 = ax[0].imshow(bb_eq_cum)
     ax[0].set_title("Bluebild LSQ dirty / nb. vis", fontsize=20)
     divider = make_axes_locatable(ax[0])
@@ -265,9 +272,11 @@ def plot_bluebild_vs_fits(bipp_grid_npy, bipp_data_npy, bipp_json, fits_name, fi
     divider = make_axes_locatable(ax[2])
     cax = divider.append_axes("right", size="5%", pad=0.05)
     plt.colorbar(im2, cax=cax)
-    
+
+    print(f"-I- Bluebild minus {fits_name} min, max: {np.min(diff):.3f}, {np.max(diff):.3f}")
+
     plt.tight_layout()    
-    fig.savefig(f"Bluebild_{fits_name}_vis_scaled.png")
+    fig.savefig(os.path.join(outdir, f"{outname}_Bluebild_{fits_name}_vis_scaled.png"))
     json_file.close()
 
 
@@ -359,24 +368,24 @@ def plot_uvw(uvw, pixw, filename, outdir, title):
     for i in range(0, uvw.shape[0]):
         if uvw[i,:].all() == 0:
             rows_to_del.append(i)
-    print("-W- deleting zero baselines at indices:", rows_to_del)
+    #print("-W- deleting zero baselines at indices:", rows_to_del)
     uvw = np.delete(uvw, rows_to_del, axis=0)
        
-    print("uvw.shape =", uvw.shape)
+    #print("uvw.shape =", uvw.shape)
 
     ui = np.rint(uvw[:,0])
     vi = np.rint(uvw[:,1])
     uvi_max = int(max(np.amax(ui), np.amax(vi)))
-    print("uvi_max =", uvi_max)
+    #print("uvi_max =", uvi_max)
     scalor = pixw / 2 / uvi_max
-    print("scalor = ", scalor)
+    #print("scalor = ", scalor)
     uv_map = np.zeros((pixw+1, pixw+1))
     print(uv_map, uv_map.dtype, uv_map.shape)
 
     already_set = 0
     for i in range(0, len(uvw[:,0])):
-        if i < 10:
-            print(" ... adding:", ui[i], vi[i], uvi_max, i)
+        #if i < 10:
+        #    print(" ... adding:", ui[i], vi[i], uvi_max, i)
         ix = int(np.rint((ui[i]+uvi_max)*scalor))
         iy = int(np.rint((vi[i]+uvi_max)*scalor))
         if uv_map[ix][iy] == 1:
@@ -384,6 +393,10 @@ def plot_uvw(uvw, pixw, filename, outdir, title):
         else:
             uv_map[ix][iy] = 1
     print(f"-W- {already_set} points already previously set. Visibilities = {uvw.shape[0]} - {already_set} = {uvw.shape[0] - already_set}")
+
+    #for a in range(-1, 2):
+    #    for b in range(-1, 2):
+    #        print(f"Origin + {a},{b}", uv_map[int(pixw/2)+a][int(pixw/2)+b])
 
     fig, ax = plt.subplots(1, 3, figsize=(27, 10))
     fig.suptitle(f"PSF\n(normalized by sum of unitary weights, i.e. nb of unique \"gridded\" baselines - {uvw.shape[0] - already_set})", fontsize=22)
@@ -407,7 +420,7 @@ def plot_uvw(uvw, pixw, filename, outdir, title):
     ax[1].set_title(f"Phase [rad]")
     ax[2].set_title(f"uv map")
 
-    plt.savefig(os.path.join(outdir, 'PSF_' + filename + '.png'))
+    plt.savefig(os.path.join(outdir, filename + '_PSF.png'))
     plt.close()
 
 
@@ -421,6 +434,10 @@ if __name__ == "__main__":
     parser.add_argument('--wsc_log',   help='WSClean log file')
     parser.add_argument('--casa_fits', help='CASA fits file')
     parser.add_argument('--casa_log',  help='CASA log file')
+    parser.add_argument('--outname',   help='Plots naming prefix', required=True)
+    parser.add_argument('--outdir',    help='Plots output directory', required=True)
+    parser.add_argument('--flip_lr',   help='Flip image left-rigth', action='store_true')
+    parser.add_argument('--flip_ud',   help='Flip image up-down',    action='store_true')
     args = parser.parse_args()
 
     do_bb   = False
@@ -437,7 +454,8 @@ if __name__ == "__main__":
         plot_wsclean_casa(args.wsc_fits, args.wsc_log, args.casa_fits, args.casa_log)
 
     if do_bb and do_wsc:
-        plot_bluebild_wsclean(args.bb_grid, args.bb_data, args.bb_json, args.wsc_fits, args.wsc_log)
+        plot_bluebild_wsclean(args.bb_grid, args.bb_data, args.bb_json, args.wsc_fits, args.wsc_log,
+                              args.outname, args.outdir)
 
     if do_bb and do_casa:
         plot_bluebild_casa(args.bb_grid, args.bb_data, args.bb_json, args.casa_fits, args.casa_log)
