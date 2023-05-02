@@ -41,15 +41,48 @@ if [ 1 == 1 ]; then
     EGGINFO=${PACKAGE_ROOT}/python/${PACKAGE}.egg-info/; [ -d $EGGINFO ] && rm -r $EGGINFO
 fi
 
+# To get the -march
+#gcc -march=native -Q --help=target | grep march
+
 #export BIPP_CMAKE_ARGS="-DBLUEBILD_BUILD_TYPE=RelWithDebInfo "
 #BIPP_GPU=OFF python -m pip install --user --verbose --no-deps --no-build-isolation ${PACKAGE_ROOT}
+#export BIPP_VC=ON
+#-fopt-info-vec-missed
+# -gdwarf-4
+GCC_ASM="-S -masm=intel -fverbose-asm"
+export BIPP_CMAKE_ARGS="-DBIPP_BUILD_TYPE=DEBUG   -DCMAKE_CXX_FLAGS_DEBUG=\"$GCC_ASM -g -m64 -O3 -fopenmp -ffast-math -march=icelake-server -mprefer-vector-width=512 -lm -fno-builtin-sincos\""
+#export BIPP_CMAKE_ARGS="-DBIPP_BUILD_TYPE=DEBUG   -DCMAKE_CXX_FLAGS_DEBUG=\"         -g -m64 -O3 -fopenmp -ffast-math -march=icelake-server -mprefer-vector-width=512 -lm -fno-builtin-sincos\""
+#export BIPP_CMAKE_ARGS="-DBIPP_BUILD_TYPE=RELEASE -DCMAKE_CXX_FLAGS_RELEASE=\"   -m64 -O3 -fopenmp -ffast-math -march=icelake-server -mprefer-vector-width=512 -lm -fno-builtin-sincos\""
+export VERBOSE=1
 BIPP_GPU=OFF python -m pip install --verbose --no-deps --no-build-isolation ${PACKAGE_ROOT}
 
 python -c "import ${PACKAGE}"
 echo "-I- test [python -c \"import ${PACKAGE}\"] successful"
+
+HOST_K_DIR=./bipp-jed/_skbuild/linux-x86_64-3.10/cmake-build/src/CMakeFiles/bipp.dir/host/kernels
+echo $HOST_K_DIR
+objdump -S -d ${HOST_K_DIR}/gemmexp.cpp.o > ${HOST_K_DIR}/gemmexp.dump
+cat ${HOST_K_DIR}/gemmexp.dump
 
 deactivate
 
 source ~/SKA/ska-spack-env/bipp-jed-gcc/deactivate.sh
 
 cd -
+
+#[4/18] release mode
+#/work/ska/soft/spack/blackhole/v1/opt/view_jed_gcc/bin/c++
+#-Dbipp_EXPORTS -I/home/orliac/SKA/epfl-radio-astro/bipp-bench/bipp-jed/src
+#-I/home/orliac/SKA/epfl-radio-astro/bipp-bench/bipp-jed/include
+#-I/home/orliac/SKA/epfl-radio-astro/bipp-bench/bipp-jed/_skbuild/linux-x86_64-3.10/cmake-build
+#-isystem /work/ska/soft/spack/blackhole/v1/opt/view_jed_gcc/include
+#-O3 -DNDEBUG -fPIC -fvisibility=hidden -fvisibility-inlines-hidden -fopenmp -MD -MT
+#src/CMakeFiles/bipp.dir/host/kernels/gemmexp.cpp.o -MF src/CMakeFiles/bipp.dir/host/kernels/gemmexp.cpp.o.d -o src/CMakeFiles/bipp.dir/host/kernels/gemmexp.cpp.o -c /home/orliac/SKA/epfl-radio-astro/bipp-bench/bipp-jed/src/host/kernels/gemmexp.cpp
+
+#
+#/work/ska/soft/spack/blackhole/v1/opt/view_jed_gcc/bin/c++
+#-Dbipp_EXPORTS -I/home/orliac/SKA/epfl-radio-astro/bipp-bench/bipp-jed/src
+#-I/home/orliac/SKA/epfl-radio-astro/bipp-bench/bipp-jed/include
+#-I/home/orliac/SKA/epfl-radio-astro/bipp-bench/bipp-jed/_skbuild/linux-x86_64-3.10/cmake-build
+#-isystem /work/ska/soft/spack/blackhole/v1/opt/view_jed_gcc/include
+#-S -g -m64 -O3 -fopenmp -ffast-math -march=icelake-server -mprefer-vector-width=512 -lm -fPIC -fvisibility=hidden -fvisibility-inlines-hidden -fopenmp -MD -MT src/CMakeFiles/bipp.dir/host/kernels/gemmexp.cpp.o -MF src/CMakeFiles/bipp.dir/host/kernels/gemmexp.cpp.o.d -o src/CMakeFiles/bipp.dir/host/kernels/gemmexp.cpp.o -c /home/orliac/SKA/epfl-radio-astro/bipp-bench/bipp-jed/src/host/kernels/gemmexp.cpp
