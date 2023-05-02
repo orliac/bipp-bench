@@ -27,9 +27,11 @@ fi
 
 [ -d $PACKAGE_ROOT ] || (echo "-E- ${PACKAGE_ROOT} directory does not exist" && exit 1)
 
-# Activate Spack environment for izar
-source ~/SKA/ska-spack-env/env-bipp-izar/activate.sh
+MY_SPACK_ENV=bipp-izar-gcc
+source ~/SKA/ska-spack-env/${MY_SPACK_ENV}/activate.sh
 python -V
+which g++
+g++ --version
 
 # Just in case, remove pypeline & bluebild from outside any virtual env
 python -m pip uninstall -y bluebild
@@ -41,10 +43,11 @@ python -m venv $VENV
 source $VENV/bin/activate
 
 # Activate this block to install from scratch
-if [ 1 == 1 ]; then 
+if [ 1 == 0 ]; then 
     python -m pip uninstall -y bluebild
     python -m pip uninstall -y pypeline
-    SKBUILD=${PACKAGE_ROOT}/_skbuild;                    [ -d $SKBUILD ] && rm -r $SKBUILD
+    SKBUILD=${PACKAGE_ROOT}/src/bluebild/_skbuild;
+    [ -d $SKBUILD ] && (echo "-W- removing $SKBUILD" && rm -r $SKBUILD)
     EGGINFO=${PACKAGE_ROOT}/${PACKAGE}.egg-info;         [ -d $EGGINFO ] && rm -r $EGGINFO
     EGGINFO=${PACKAGE_ROOT}/python/${PACKAGE}.egg-info/; [ -d $EGGINFO ] && rm -r $EGGINFO
 fi
@@ -53,7 +56,8 @@ fi
 #BLUEBILD_GPU=OFF python -m pip install --user --verbose --no-deps --no-build-isolation ${PACKAGE_ROOT}
 #export CUDAFLAGS="-g -G"
 BLUEBILD_GPU=CUDA python -m pip install --verbose --no-deps --no-build-isolation ${PACKAGE_ROOT}/src/bluebild
-python -m pip install --verbose --no-deps --no-build-isolation ${PACKAGE_ROOT}
+#python -m pip install --verbose --no-deps --no-build-isolation ${PACKAGE_ROOT}
+python -m pip install --verbose --no-deps -e ${PACKAGE_ROOT}
 
 python -c "import pypeline"
 echo "-I- test [python -c \"import ${PACKAGE}\"] successful"
@@ -62,6 +66,6 @@ echo "-I- test [python -c \"import bluebild\"] successful"
 
 deactivate
 
-source ~/SKA/ska-spack-env/env-bipp-izar/deactivate.sh
+source ~/SKA/ska-spack-env/${MY_SPACK_ENV}/deactivate.sh
 
 cd -
