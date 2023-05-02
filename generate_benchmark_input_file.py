@@ -30,13 +30,10 @@ if args.package == "bipp" and args.proc_unit == "none":
     sys.exit(1)
 
 # Set up jobs to run in the benchmark
-#nLevels   = [1, 2, 4, 16, 32, 60]
-#pixWidths = [256, 512, 1024, 2048, 4096]
+nLevels   = [1, 2, 4]
+pixWidths = [256, 512, 1024, 2048]
 #nStations = [15, 30, 60]
-
-nLevels   = [1] #, 2, 3, 4, 5, 6, 7, 8, 9, 10] #, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20]
-pixWidths = [1024]
-nStations = [0]   # 0 == None == All
+nStations = [0] # 0 == all stations
 
 with open(args.in_file, 'w') as f:
     for nsta in np.sort(nStations):
