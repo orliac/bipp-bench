@@ -67,8 +67,9 @@ if [[ $sigma < 0.0 ]] || [[ $sigma > 1.0 ]]; then
     echo "-E- Invalid value for sigma ($sigma). Must be > 0.0 and < 1.0"
     exit 1
 fi
-if [ "$pipeline" != "lofar_bootes" ] && [ "$pipeline" != "real_lofar_bootes" ]; then
-    echo "-E- Only pipelines lofar_bootes_... and real_lofar_bootes_... allowed"
+if [ "$pipeline" != "lofar_bootes" ] && [ "$pipeline" != "real_lofar_bootes" ] && \
+    [ "$pipeline" != "slim_lofar_bootes" ]; then
+    echo "-E- Only pipelines lofar_bootes_... and real_lofar_bootes_... and slim_lofar_bootes_* llowed"
     exit 1
 fi
 if [ "$algo" != "ss" ] && [ "$algo" != "nufft" ]; then
@@ -124,6 +125,7 @@ python generate_benchmark_input_file.py \
 
 [ $? -eq 0 ] || (echo "-E- $ python generate_benchmark_input_file.py ... failed" && exit 1)
 echo "-I- Generated input file $in_file"
+
 module purge
 
 # Count the number of lines in $in_file
@@ -136,21 +138,24 @@ NJOBS=$(($NJOBS-1))
 SBATCH_SH=sbatch_generic.sh
 [ -f $SBATCH_SH ] || (echo "-E- Template submission file for $package on $cluster \
 >>$SBATCH_SH<< not found" && exit 1)
-cp -v ${pipeline}_${algo}_${package}.py $out_dir
-cp -v $SBATCH_SH                        $out_dir
-cp -v bipptb.py                         $out_dir
-cp -v wscleantb.py                      $out_dir
-cp -v casatb.py                         $out_dir
-cp -v casa_tclean.py                    $out_dir
-cp -v plots.py                          $out_dir
-cp -v wsclean_log_to_json.py            $out_dir
-cp -v casa_log_to_json.py               $out_dir
+cp -v ${pipeline}_${algo}_${package}.py  $out_dir
+cp -v $SBATCH_SH                         $out_dir
+cp -v bipptb.py                          $out_dir
+cp -v wscleantb.py                       $out_dir
+cp -v casatb.py                          $out_dir
+cp -v casa_tclean.py                     $out_dir
+cp -v plots.py                           $out_dir
+cp -v wsclean_log_to_json.py             $out_dir
+cp -v casa_log_to_json.py                $out_dir
+cp -v add_time_stats_to_bluebild_json.py $out_dir
+cp -r $ms_file $out_dir
 
 cd $out_dir
 
 slurm_opts=$(sed "s/|/ /g" <<< $slurm_opts)
 slurm_opts="$slurm_opts --array 0-${NJOBS}"
 [ "$cluster" == "izar" ] && slurm_opts="$slurm_opts%4" ### Adapt here for max simulatneous jobs
+#[ "$cluster" == "izar" ] && slurm_opts="$slurm_opts%10" ### Adapt here for max simulatneous jobs
 echo
 echo "slurm_opts >>$slurm_opts<<"
 echo
