@@ -6,6 +6,8 @@ echo
 env | grep SLURM
 echo
 
+
+
 get_option_value() {
     option=$2
     opt_array=($1)
@@ -77,6 +79,7 @@ echo "-I- Input line >>$input_line<<"; echo
 WSC_SIZE="$(get_option_value "$input_line" "--pixw")"
 WSC_SCALE="$(get_option_value "$input_line" "--wsc_scale")"
 MS_FILE="$(get_option_value "$input_line" "--ms_file")"
+MS_BASENAME=$(basename -- "$MS_FILE")
 OUT_DIR="$(get_option_value "$input_line" "--output_directory")"
 [ ! -d $OUT_DIR ] && mkdir -pv $OUT_DIR
 cd $OUT_DIR
@@ -87,13 +90,14 @@ ln -s $SOL_DIR/${SLURMOUT_BASENAME} $OUT_DIR/${SLURMOUT_BASENAME}
 ## WARNING: CASA must be run before activating the environments!!
 #           (conflits otherwise)
 
-RUN_CASA=0
+RUN_CASA=1
 RUN_WSCLEAN=1
 
 echo =============================================================================
 echo CASA
 echo =============================================================================
 if [[ $RUN_CASA == 1 ]]; then
+    cp -r $SOL_DIR/$MS_BASENAME .
     CASA=~/SKA/casa-6.5.3-28-py3.8/bin/casa
     [ -f $CASA ] || (echo "Fatal. Could not find $CASA" && exit 1)
     which $CASA
@@ -106,7 +110,7 @@ if [[ $RUN_CASA == 1 ]]; then
         --notelemetry \
         --logfile ${CASA_LOG} \
         -c $SOL_DIR/casa_tclean.py \
-        --ms_file ${MS_FILE} \
+        --ms_file ${MS_BASENAME} \
         --out_name ${CASA_OUT} \
         --imsize ${WSC_SIZE} \
         --cell ${WSC_SCALE} \
@@ -129,10 +133,18 @@ echo ===========================================================================
 echo WSClean
 echo =============================================================================
 echo
+
 #-even-timesteps \
+#-apply-primary-beam \
+#-interval 0 1 \
+#-make-psf \
+
 if [[ $RUN_WSCLEAN == 1 ]]; then
+
+    # dirty
+    cp -r $SOL_DIR/$MS_BASENAME .
     WSCLEAN_OUT=dirty_wsclean
-    WSCLEAN_LOG=wsclean.log
+    WSCLEAN_LOG=dirty_wsclean.log
     time wsclean \
         -verbose \
         -log-time \
@@ -143,14 +155,37 @@ if [[ $RUN_WSCLEAN == 1 ]]; then
         -weight natural \
         -niter 0 \
         -name ${WSCLEAN_OUT} \
-        -interval 0 1 \
-        -make-psf \
-        ${MS_FILE} \
+        ${MS_BASENAME} \
         | tee ${WSCLEAN_LOG}
     
     echo
     python $SOL_DIR/wsclean_log_to_json.py --wsc_log ${WSCLEAN_LOG}
     echo
+
+    # clean
+    cp -r $SOL_DIR/$MS_BASENAME .
+    WSCLEAN_CLEAN_OUT=clean_wsclean
+    WSCLEAN_CLEAN_LOG=clean_wsclean.log
+    time wsclean \
+        -verbose \
+        -log-time \
+        -channel-range 0 1 \
+        -size ${WSC_SIZE} ${WSC_SIZE} \
+        -scale ${WSC_SCALE}asec \
+        -pol I \
+        -weight natural \
+        -niter 0 \
+        -name ${WSCLEAN_CLEAN_OUT} \
+        -make-psf \
+        -niter 5000 -mgain 0.8 -threshold 0.1 \
+        ${MS_BASENAME} \
+        | tee ${WSCLEAN_CLEAN_LOG}
+    
+    #echo
+    #python $SOL_DIR/wsclean_log_to_json.py --wsc_log ${WSCLEAN_CLEAN_LOG}
+    #echo
+
+
 fi
 
 cd -
@@ -189,10 +224,12 @@ PLOTS_CMD+=" --bb_grid   I_lsq_eq_grid.npy"
 PLOTS_CMD+=" --bb_data   I_lsq_eq_data.npy"
 PLOTS_CMD+=" --bb_json   stats.json"
 if [[ $RUN_WSCLEAN == 1 ]]; then
+    echo "@@@ Will plot Bluebild vs WSClean"
     PLOTS_CMD+=" --wsc_fits  ${WSCLEAN_OUT}-dirty.fits"
     PLOTS_CMD+=" --wsc_log   ${WSCLEAN_LOG}"
 fi
 if [[ $RUN_CASA == 1 ]]; then
+    echo "@@@ Will plot Bluebild vs CASA"
     PLOTS_CMD+=" --casa_fits ${CASA_OUT}.image.fits"
     PLOTS_CMD+=" --casa_log  ${CASA_LOG}"
 fi
