@@ -4,7 +4,8 @@ import argparse
 from pathlib import Path
 import numpy
 import json
-
+from distutils.util import strtobool
+import pickle
 
 def dump_json(info):
     print(info)
@@ -48,11 +49,35 @@ def compare_solutions(ref, sol):
     print(f"-R- STD stats: rmse = {rmse_std:.2E}, max abs err = {max_abs_err_std:.2E}")
 
 
-def dump_data(stats, filename, outdir):
+def dump_pkl(stats, filename, outdir, verbose=False):
+    fp = os.path.join(outdir, filename + '.pkl')
+    with open(fp, 'wb') as f:
+        pickle.dump(stats, f)
+    if verbose:
+        print(f"-I- Pickle dump to {fp}")
+
+def load_pkl(filename, outdir, verbose=False):
+    fp = os.path.join(outdir, filename + '.pkl')
+    with open(fp, 'rb') as f:
+        data = pickle.load(f)
+    if verbose:
+        print(f"-I- Pickle load from {fp}")
+    return data
+
+def dump_data(stats, filename, outdir, verbose=False):
     if outdir:
         fp = os.path.join(outdir, filename + '.npy')
         with open(fp, 'wb') as f:
             numpy.save(f, stats)
+        if verbose:
+            print(f"-I- Dumped {fp}")
+
+def load_data(filename, outdir, verbose=False):
+    fp = os.path.join(outdir, filename + '.npy')
+    data = numpy.load(fp, allow_pickle=True)
+    if verbose:
+        print(f"-I- Loaded {fp}")
+    return data
 
 def dump_stats(stats, filename, outdir):
     if outdir:
@@ -82,6 +107,7 @@ def check_args(args_in):
                         choices=['single', 'double'], default='double')
     parser.add_argument("--package", help="Package to run, either bipp or pypeline",
                         choices=['bipp', 'pypeline'], required=True)
+    parser.add_argument("--algo", help="Algorithm to use in Bluebild", choices=['ss', 'nufft'], required=True)
     parser.add_argument("--nsta", help="Number of stations in simulation",  #EO: should defaults to None == all stations
                         required=False, type=int) 
     parser.add_argument("--nlev", help="Number of energy levels in simulation",
@@ -100,6 +126,12 @@ def check_args(args_in):
     parser.add_argument("--nufft_eps", help="NUFFT convergence epsilon",
                         type=float, default=0.001)
     parser.add_argument("--ms_file", help="Path to MS file to process")
+    parser.add_argument("--telescope", help="Observing instrument in use",
+                        choices=['SKALOW', 'LOFAR'], required=True)
+    parser.add_argument("--filter_negative_eigenvalues", help="Switch to filter or not negative eigenvalues",
+                        type=lambda x: bool(strtobool(x)), default=True)
+    parser.add_argument("--debug", help="Switch to debugging mode (read S from dumped .npy)",
+                        default=False, required=False, action='store_true')
 
     args = parser.parse_args()
     """
@@ -131,6 +163,7 @@ def check_args(args_in):
 
     print("-I- Command line input -----------------------------")
     print("-I- MS file       =", args.ms_file)
+    print("-I- Telescope     =", args.telescope)
     print("-I- precision     =", args.precision)
     print("-I- N. bits       =", args.nbits)
     print("-I- N. stations   =", args.nsta)
