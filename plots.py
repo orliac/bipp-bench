@@ -23,7 +23,7 @@ def read_fits_file(fits_file):
     return header, data
 
 
-def plot_bluebild_casa(bipp_grid_npy, bipp_data_npy, bipp_json, fits_file, log_file):
+def plot_bluebild_casa(bipp_grid_npy, bipp_data_npy, bipp_json, fits_file, log_file, outname, outdir):
     print("==========================================================")
     print(" Plotting Bluebild vs CASA")
     print("==========================================================")
@@ -33,7 +33,7 @@ def plot_bluebild_casa(bipp_grid_npy, bipp_data_npy, bipp_json, fits_file, log_f
 
     title  = f"{'CASA':8s}: {int(totvis):7d} vis   runtime: {t_inv:6.2f} sec"
 
-    plot_bluebild_vs_fits(bipp_grid_npy, bipp_data_npy, bipp_json, 'CASA', data, title)
+    plot_bluebild_vs_fits(bipp_grid_npy, bipp_data_npy, bipp_json, 'CASA', data, title, outname, outdir)
 
 
 def plot_bluebild_wsclean(bipp_grid_npy, bipp_data_npy, bipp_json, fits_file, log_file, outname, outdir):
@@ -347,10 +347,10 @@ def plot_complex_matrix(X, filename, outdir, title, xlabel, ylabel):
     cax = divider.append_axes("right", size="5%", pad=0.05)
     fig.colorbar(im, cax=cax)
 
-    ax[0,0].set_title(f"Real (sum diag = {X.real.diagonal().sum():.3f})")
-    ax[0,1].set_title(f"Imag (sum diag = {X.imag.diagonal().sum():.3f})")
+    ax[0,0].set_title(f"Real (sum = {X.real.sum():.3f}, sum diag = {X.real.diagonal().sum():.3f})")
+    ax[0,1].set_title(f"Imag. (sum = {X.imag.sum():.3f}, sum diag = {X.imag.diagonal().sum():.3f})")
     ax[1,0].set_title(f"Amplitude (sum = {abs(X).sum():.3f}, sum diag = {abs(X).diagonal().sum():.3f})")
-    ax[1,1].set_title(f"Phase (sum diag = {np.angle(X).diagonal().sum():.3f})")
+    ax[1,1].set_title(f"Phase (sum = {np.angle(X).sum():.3f}, sum diag = {np.angle(X).diagonal().sum():.3f})")
 
     plt.savefig(os.path.join(outdir, filename + '.png'))
     plt.close()
@@ -434,7 +434,7 @@ if __name__ == "__main__":
     parser.add_argument('--wsc_log',   help='WSClean log file')
     parser.add_argument('--casa_fits', help='CASA fits file')
     parser.add_argument('--casa_log',  help='CASA log file')
-    parser.add_argument('--outname',   help='Plots naming prefix', required=True)
+    parser.add_argument('--outname',   help='Plots naming prefix',    required=True)
     parser.add_argument('--outdir',    help='Plots output directory', required=True)
     parser.add_argument('--flip_lr',   help='Flip image left-rigth', action='store_true')
     parser.add_argument('--flip_ud',   help='Flip image up-down',    action='store_true')
@@ -458,4 +458,5 @@ if __name__ == "__main__":
                               args.outname, args.outdir)
 
     if do_bb and do_casa:
-        plot_bluebild_casa(args.bb_grid, args.bb_data, args.bb_json, args.casa_fits, args.casa_log)
+        plot_bluebild_casa(args.bb_grid, args.bb_data, args.bb_json, args.casa_fits, args.casa_log,
+                           args.outname, args.outdir)
