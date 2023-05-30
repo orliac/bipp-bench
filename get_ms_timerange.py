@@ -13,7 +13,8 @@ def get_args():
     p.add_argument("--time_start_idx", default=0, help="Index of first epoch to process.", type=int)
     p.add_argument("--time_end_idx",   default=1, help="Index of last epoch to process.", type=int)
     p.add_argument("--time_slice",     default=1, help="Time index slicing", type=int)
-    p.add_argument("--channel_id", default=0, help="Channel ID to consider", type=int)
+    p.add_argument("--channel_id",     default=0, help="Channel ID to consider", type=int)
+    p.add_argument("--time_file", required=True, help="Path to file containing start and end datetimes to process in CASA format.")
     args = p.parse_args()
     
     assert args.time_start_idx < args.time_end_idx
@@ -21,9 +22,9 @@ def get_args():
     return args
 
 
-def visibilities(msf, channel_id, time_id, column):
+def times(msf, channel_id, time_id, column):
         """
-        Extract visibility matrices.
+        Extract datetimes
 
         Parameters
         ----------
@@ -38,7 +39,7 @@ def visibilities(msf, channel_id, time_id, column):
 
         Returns
         -------
-        TBC
+        Nothing. Write a two lines file with start and end datetimes in CASA format.
         """
 
         query = f"select * from {msf}"
@@ -46,7 +47,7 @@ def visibilities(msf, channel_id, time_id, column):
         t = time.Time(np.unique(table.calc("MJD(TIME)")), format="mjd", scale="utc")
         t_id = range(len(t))
         _time = tb.QTable(dict(TIME_ID=t_id, TIME=t))
-        print("-D- _time =", _time)
+        #print("-D- _time =", _time)
 
 
         if column not in ct.taql(f"select * from {msf}").colnames():
@@ -54,7 +55,7 @@ def visibilities(msf, channel_id, time_id, column):
 
         N_time = len(_time)
         time_start, time_stop, time_step = time_id.indices(N_time)
-        print(time_start, time_stop, time_step)
+        #print(time_start, time_stop, time_step)
 
         # Only a subset of the MAIN table's columns are needed to extract visibility information.
         # As such, it makes sense to construct a TaQL query that only extracts the columns of
@@ -68,18 +69,35 @@ def visibilities(msf, channel_id, time_id, column):
             f"(select unique TIME from {msf} limit {time_start}:{time_stop}:{time_step})"
         )
         table = ct.taql(query)
-        
+        mjd_min = 1E10
+        mjd_max = -1E10
         for sub_table in table.iter("TIME", sort=True):
-            print(sub_table)
-            print(sub_table.CDATETIME(TIME))
-            t = time.Time(sub_table.calc("MJD(TIME)")[0], format="mjd", scale="utc")
-            #t2 = time.Time(sub_table.TIME)")[0], format="datetime", scale="utc")
-            print(t)
-            
+            mjd = sub_table.calc("MJD(TIME)")[0]
+            if mjd > mjd_max: mjd_max = mjd
+            if mjd < mjd_min: mjd_min = mjd
+        #print(f"-I- mjd = [{mjd_min:.7f}, {mjd_max:.7f}]")
+        t_min = time.Time(mjd_min, format="mjd", scale="utc")
+        t_max = time.Time(mjd_max, format="mjd", scale="utc")
+        t_min.format = 'isot'
+        t_max.format = 'isot'
+        #print(t_min, t_max)
+        with open(args.time_file, "w") as f:
+            f.write(isot_to_ms(t_min.value) + "\n")
+            f.write(isot_to_ms(t_max.value) + "\n")
+
+
+# Convert isot datetime string to format expected by CASA: YYYY/MM/DD/HH:MM:SS.FF
+# https://casadocs.readthedocs.io/en/v6.3.0/notebooks/visibility_data_selection.html#The-timerange-Parameter
+def isot_to_ms(t):
+    t = t.replace('-','/',2)
+    t = t.replace('T','/',1)
+    t = t[:-1]
+    return t
+
 
 if __name__ == "__main__":
     args = get_args()
-    print(args)
+    #print(args)
 
     time_id = slice(args.time_start_idx, args.time_end_idx, args.time_slice)
-    mjds = visibilities(args.ms, args.channel_id, time_id, args.data_col)
+    times(args.ms, args.channel_id, time_id, args.data_col)
