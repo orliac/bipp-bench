@@ -25,8 +25,12 @@ def get_casa_info_from_log(log_file):
             #print('casa_te', casa_te)
     #print("casa_totvis:", casa_totvis)
     #print("casa_t_inv :", (casa_te - casa_ts).total_seconds())
-    return casa_totvis, (casa_te - casa_ts).total_seconds()
-    sys.exit(0)
+
+    casa_info  = f"package      = CASA\n"
+    casa_info += f"wsc totvis   = {casa_totvis}\n"
+    casa_info += f"wsc t_inv    = {(casa_te - casa_ts).total_seconds():.3f}\n"
+
+    return casa_totvis, (casa_te - casa_ts).total_seconds(), casa_info
 
 
 def write_json(casa_log):
