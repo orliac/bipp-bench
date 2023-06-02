@@ -22,7 +22,14 @@ def get_wsclean_info_from_log(wsclean_log):
             t_pred   = datetime.datetime.strptime(wsc_t_pred,  '%H:%M:%S') - datetime.datetime(1900,1,1)
             t_deconv = datetime.datetime.strptime(wsc_t_deconv,'%H:%M:%S') - datetime.datetime(1900,1,1)
 
-    return wsc_totvis, wsc_gridvis, t_inv.total_seconds(), t_pred.total_seconds(), t_deconv.total_seconds()
+    wsc_info  = f"package      = WSClean (wsc)\n"
+    wsc_info += f"wsc totvis   = {wsc_totvis}\n"
+    wsc_info += f"wsc gridvis  = {wsc_gridvis}\n"
+    wsc_info += f"wsc t_inv    = {t_inv.total_seconds():.3f}\n"
+    wsc_info += f"wsc t_pred   = {t_pred.total_seconds():.3f}\n"
+    wsc_info += f"wsc t_deconv = {t_deconv.total_seconds():.3f}\n"
+
+    return wsc_totvis, wsc_gridvis, t_inv.total_seconds(), t_pred.total_seconds(), t_deconv.total_seconds(), wsc_info
 
 
 def write_json(wsc_log):
