@@ -117,7 +117,12 @@ def check_args(args_in):
     parser.add_argument("--wsc_scale", help="WSClean scale [arcsec]",
                         type=int)
     parser.add_argument("--wsc_log", help="WSClean log file")
-    parser.add_argument("--time_slice_pe", help="Time slice for parameter estimation (PE)",
+
+    parser.add_argument("--time_start_idx", help="Index of first epoch to process",
+                        type=int, default=0)
+    parser.add_argument("--time_end_idx",  help="Index of last epoch to process",
+                        type=int, default=1)
+    parser.add_argument("--time_slice_pe",  help="Time slice for parameter estimation (PE)",
                         type=int, default=1)
     parser.add_argument("--time_slice_im", help="Time slice for imaging (IM)",
                         type=int, default=1)
@@ -144,6 +149,12 @@ def check_args(args_in):
         print("-W- will not dump anything since --outdir was not set")
     """
 
+    assert args.time_start_idx >= 0
+    assert args.time_end_idx >= 0
+    assert args.time_start_idx <= args.time_end_idx
+    assert args.time_slice_pe >= 1
+    assert args.time_slice_im >= 1
+
     if args.package == "bipp" and args.processing_unit == 'none':
         print('-E- bipp processing unit cannot be none.')
         sys.exit(1)
@@ -162,20 +173,22 @@ def check_args(args_in):
 
 
     print("-I- Command line input -----------------------------")
-    print("-I- MS file       =", args.ms_file)
-    print("-I- Telescope     =", args.telescope)
-    print("-I- precision     =", args.precision)
-    print("-I- N. bits       =", args.nbits)
-    print("-I- N. stations   =", args.nsta)
-    print("-I- proc unit     =", args.processing_unit)
-    print("-I- N. pix        =", args.pixw)
-    print("-I- N. levels     =", args.nlev)
-    print("-I- WSClean scale =", args.wsc_scale)
-    print("-I- Time slice PE =", args.time_slice_pe)
-    print("-I- Time slice IM =", args.time_slice_im)
-    print("-I- sigma         =", args.sigma)
-    print("-I- NUFFT epsilon =", args.nufft_eps)
-    print("-I- Output dir.   =", args.output_directory)
+    print("-I- MS file        =", args.ms_file)
+    print("-I- Telescope      =", args.telescope)
+    print("-I- precision      =", args.precision)
+    print("-I- N. bits        =", args.nbits)
+    print("-I- N. stations    =", args.nsta)
+    print("-I- proc unit      =", args.processing_unit)
+    print("-I- N. pix         =", args.pixw)
+    print("-I- N. levels      =", args.nlev)
+    print("-I- WSClean scale  =", args.wsc_scale)
+    print("-I- Time start idx =", args.time_start_idx)
+    print("-I- Time end idx   =", args.time_end_idx)
+    print("-I- Time slice PE  =", args.time_slice_pe)
+    print("-I- Time slice IM  =", args.time_slice_im)
+    print("-I- sigma          =", args.sigma)
+    print("-I- NUFFT epsilon  =", args.nufft_eps)
+    print("-I- Output dir.    =", args.output_directory)
     print("-I- ------------------------------------------------")
 
     return args
