@@ -7,31 +7,61 @@ export MARLA_ROOT=~/SKA/epfl-radio-astro/marla
 export LD_LIBRARY_PATH=$FINUFFT_ROOT/lib:$CUFINUFFT_ROOT/lib:$umpire_DIR/lib:$LD_LIBRARY_PATH
 
 
-SCRIPT_DIR=$( cd -- "$( dirname -- "${BASH_SOURCE[0]}" )" &> /dev/null && pwd )
+# Check command line input (getopt not ideal as --f* will enable --from_scratch)
+#
+if [[ $# < 1 ]] || [[ $# > 2 ]]; then
+    echo "-E- At least one arguement is expected, the name of the repo to be used [upstream, orliac]"
+    echo "-E- Max 2 arguments are expected, optional second one is --from-scratch"
+    exit 1
+fi
+from_scratch=0
+if [[ $# == 2 ]]; then
+    if [ $2 != "--from_scratch" ]; then
+        echo "-E- If second arg is passed, must be --from_scratch"
+        exit 1
+    else
+        from_scratch=1
+    fi
+fi
+echo "-I- from_scratch = $from_scratch"
+github_workspace=$1
+if [ $github_workspace !=  "epfl-radio-astro" ] && [ $github_workspace !=  "orliac" ]; then
+    echo "-E- Unknown GitHub workspacke $workspace. Must be \"epfl-radio-astro\" or \"orliac\"."
+    exit 1
+fi
 
+SCRIPT_DIR=$( cd -- "$( dirname -- "${BASH_SOURCE[0]}" )" &> /dev/null && pwd )
 cd $SCRIPT_DIR
 
 CLUSTER=izar
 PACKAGE=pypeline
 
-PACKAGE_NAME="${PACKAGE}-${CLUSTER}"
+PACKAGE_NAME="${PACKAGE}-${CLUSTER}-${github_workspace}"
 PACKAGE_ROOT=${SCRIPT_DIR}/${PACKAGE_NAME}
 echo PACKAGE_ROOT = ${PACKAGE_ROOT}
 
-# Delete if exists already + Git clone 
-# Install ci-master which does not contain bipp!
-if [ 1 == 0 ]; then
+
+# Delete if exists already + Git clone
+# /!\ Install ci-master which does not contain bipp!
+#
+if [ $from_scratch == 1 ]; then
+    echo "-W- ARE YOU SURE ABOUT THE RECURSIVE DELETE? If so comment me out." && exit 1
     [ -d $PACKAGE_ROOT ] && rm -rf ${PACKAGE_ROOT}
-    git clone --branch ci-master https://github.com/epfl-radio-astro/${PACKAGE}.git ${PACKAGE_ROOT}
+    git clone --branch ci-master https://github.com/${github_workspace}/${PACKAGE}.git ${PACKAGE_ROOT}
 fi
 
-[ -d $PACKAGE_ROOT ] || (echo "-E- ${PACKAGE_ROOT} directory does not exist" && exit 1)
+# Git clone branch ci-master if not done yet
+if [ ! -d $PACKAGE_ROOT ]; then 
+    echo "-W- ${PACKAGE_ROOT} directory does not exist, will clone it"
+    git clone --branch ci-master https://github.com/${github_workspace}/${PACKAGE}.git ${PACKAGE_ROOT}
+fi
 
+# Do not pull automatically!
+
+# Activate Spack environment for izar
 MY_SPACK_ENV=bipp-izar-gcc
 source ~/SKA/ska-spack-env/${MY_SPACK_ENV}/activate.sh
 python -V
-which g++
-g++ --version
 
 # Just in case, remove pypeline & bluebild from outside any virtual env
 python -m pip uninstall -y bluebild
