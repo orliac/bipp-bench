@@ -43,6 +43,11 @@ def plot_wsc_casa_bb(wsc_fits, wsc_log, casa_fits, casa_log, bb_grid, bb_data, b
     outname += f"_wsc_casa_bb"
 
     bb_info = get_bipp_info_from_json(bb_json)
+
+    if not os.path.isfile(casa_log):
+        raise Warning(f"{casa_log} not found. Abort plot.")
+        return
+
     _, _, casa_info = casatb.get_casa_info_from_log(casa_log)
     _, _, _, _, _, wsc_info = wscleantb.get_wsclean_info_from_log(wsc_log)
     print(bb_info)
@@ -88,8 +93,15 @@ def plot_wsc_casa_bb(wsc_fits, wsc_log, casa_fits, casa_log, bb_grid, bb_data, b
     diff_bb_casa  = bb_data   - casa_data
 
     # color bar min/max
-    zmin = min(np.amin(wsc_data), np.amin(casa_data), np.amin(bb_data))
-    zmax = max(np.amax(wsc_data), np.amax(casa_data), np.amax(bb_data))
+    casa_min, casa_max = np.amin(casa_data), np.amax(casa_data)
+    wsc_min,  wsc_max  = np.amin(wsc_data),  np.amax(wsc_data)
+    bb_min,   bb_max   = np.amin(bb_data),   np.amax(bb_data)
+    print(f"-I- CASA     = [{casa_min:8.2f}, {casa_max:8.2f}]")
+    print(f"-I- WSClean  = [{wsc_min:8.2f}, {wsc_max:8.2f}]")
+    print(f"-I- Bluebild = [{bb_min:8.2f}, {bb_max:8.2f}]")
+
+    zmin = min(wsc_min, casa_min, bb_min)
+    zmax = max(wsc_max, casa_max, bb_max)
     print(f"-D- range = [{zmin:.3f}, {zmax:.3f}]")
     max_absz = max(abs(zmin), abs(zmax))
     dmin = min(np.amin(diff_casa_wsc), np.amin(diff_bb_wsc), np.amin(diff_bb_casa))
@@ -97,6 +109,23 @@ def plot_wsc_casa_bb(wsc_fits, wsc_log, casa_fits, casa_log, bb_grid, bb_data, b
     print(f"-D- diff  = [{dmin:.3f}, {dmax:.3f}]")
     abs_max = max(abs(dmin), abs(dmax))
     print(f"-D- max abs diff = {abs_max:.3f}")
+
+
+    # Compute structural similarity index (SSIM)
+    bw_min = min(np.amin(wsc_data), np.amin(bb_data))
+    bw_max = max(np.amax(wsc_data), np.amax(bb_data))
+    ssim_bb_wsc  = ssim(wsc_data, bb_data, data_range= bw_max - bw_min)
+    print(f"-I- ssim_bb_wsc  = {ssim_bb_wsc:.3f}")
+    bc_min = min(np.amin(casa_data), np.amin(bb_data))
+    bc_max = max(np.amax(casa_data), np.amax(bb_data))
+    ssim_bb_casa = ssim(casa_data, bb_data, data_range= bc_max - bc_min)
+    print(f"-I- ssim_bb_casa = {ssim_bb_casa:.3f}")
+    wc_min = min(np.amin(casa_data), np.amin(wsc_data))
+    wc_max = max(np.amax(casa_data), np.amax(wsc_data))
+    ssim_wsc_casa = ssim(casa_data, wsc_data, data_range= wc_max - wc_min)
+    print(f"-I- ssim_wsc_casa = {ssim_wsc_casa:.3f}")
+
+    #sys.exit(0)
 
     rad1 = 0.50
     rad2 = 0.75
@@ -115,31 +144,34 @@ def plot_wsc_casa_bb(wsc_fits, wsc_log, casa_fits, casa_log, bb_grid, bb_data, b
     plt.rc('xtick', labelsize=14)
     plt.rc('ytick', labelsize=14)
 
+    vmin, vmax = -max_absz, max_absz
+    vmin, vmax = zmin, zmax
+
     plt.subplot(231, projection=wcs, slices=('x', 'y', 0, 0))
-    plt.imshow(wsc_data, vmin=-max_absz, vmax=max_absz)
+    plt.imshow(wsc_data, vmin=vmin, vmax=vmax)
     plt.grid(color='white', ls='solid')
     plt.title('(a) WSClean', pad=14)
     plt.gca().coords[0].set_axislabel(" ")
-    plt.gca().coords[0].set_ticklabel_visible(False)
+    plt.gca().coords[0].set_ticklabel_visible(True)
     plt.gca().coords[1].set_axislabel("Declination")
 
     plt.subplot(232, projection=wcs, slices=('x', 'y', 0, 0))
-    plt.imshow(casa_data, vmin=-max_absz, vmax=max_absz)
+    plt.imshow(casa_data, vmin=vmin, vmax=vmax)
     plt.grid(color='white', ls='solid')
     plt.title('(b) CASA', pad=14)
     plt.gca().coords[0].set_axislabel(" ")
-    plt.gca().coords[0].set_ticklabel_visible(False)
+    plt.gca().coords[0].set_ticklabel_visible(True)
     plt.gca().coords[1].set_axislabel(" ")
-    plt.gca().coords[1].set_ticklabel_visible(False)
+    plt.gca().coords[1].set_ticklabel_visible(True)
 
     plt.subplot(233, projection=wcs, slices=('x', 'y', 0, 0))
-    plt.imshow(bb_data, vmin=-max_absz, vmax=max_absz)
+    plt.imshow(bb_data, vmin=vmin, vmax=vmax)
     plt.grid(color='white', ls='solid')
     plt.title('(c) Bluebild', pad=14)
     plt.gca().coords[0].set_axislabel(" ")
-    plt.gca().coords[0].set_ticklabel_visible(False)
+    plt.gca().coords[0].set_ticklabel_visible(True)
     plt.gca().coords[1].set_axislabel(" ")
-    plt.gca().coords[1].set_ticklabel_visible(False)
+    plt.gca().coords[1].set_ticklabel_visible(True)
 
     cb_ax = fig.add_axes([0.92, 0.535, 0.012, 0.34])
     cbar = plt.colorbar(cax=cb_ax)
@@ -168,7 +200,7 @@ def plot_wsc_casa_bb(wsc_fits, wsc_log, casa_fits, casa_log, bb_grid, bb_data, b
     plt.title('(e) Bluebild minus CASA', pad=14)
     plt.gca().coords[0].set_axislabel("Right ascension")
     plt.gca().coords[1].set_axislabel(" ")
-    plt.gca().coords[1].set_ticklabel_visible(False)
+    plt.gca().coords[1].set_ticklabel_visible(True)
     r1 = Circle((half_width_pix, half_width_pix), rad1_pix, edgecolor='darkorange', facecolor='none')
     plt.gca().add_patch(r1)
     r2 = Circle((half_width_pix, half_width_pix), rad2_pix, edgecolor='fuchsia', facecolor='none')
@@ -183,7 +215,7 @@ def plot_wsc_casa_bb(wsc_fits, wsc_log, casa_fits, casa_log, bb_grid, bb_data, b
     plt.title('(f) Bluebild minus WSClean', pad=14)
     plt.gca().coords[0].set_axislabel("Right ascension")
     plt.gca().coords[1].set_axislabel(" ")
-    plt.gca().coords[1].set_ticklabel_visible(False)
+    plt.gca().coords[1].set_ticklabel_visible(True)
     r1 = Circle((half_width_pix, half_width_pix), rad1_pix, edgecolor='darkorange', facecolor='none')
     plt.gca().add_patch(r1)
     r2 = Circle((half_width_pix, half_width_pix), rad2_pix, edgecolor='fuchsia', facecolor='none')
@@ -195,17 +227,14 @@ def plot_wsc_casa_bb(wsc_fits, wsc_log, casa_fits, casa_log, bb_grid, bb_data, b
     cbar = plt.colorbar(cax=cb_ax)
     cbar.ax.tick_params(size=0)
 
-    #plt.tight_layout()
-    basename = os.path.join(outdir, outname)
-    file_png  = basename + '.png'
-    plt.savefig(file_png)
-    print("-I-", file_png)
-    sys.exit(0)
-
     # Write .png and associated .misc file
     basename = os.path.join(outdir, outname)
     file_png  = basename + '.png'
     file_misc = basename + '.misc'
+
+    plt.savefig(file_png, bbox_inches='tight')
+    print("-I-", file_png)
+
 
     with open(file_misc, 'w') as f:
         f.write("WSClean\n")
@@ -217,23 +246,31 @@ def plot_wsc_casa_bb(wsc_fits, wsc_log, casa_fits, casa_log, bb_grid, bb_data, b
         f.write("\nBluebild\n")
         f.write("-------------------------------------------------------------------\n")
         f.write(bb_info)
-        """
-        f.write(f"diff min = {np.amin(diff_data):.3f}\n")
-        f.write(f"diff max = {np.amax(diff_data):.3f}\n")
-        f.write(f"diff rms = {rmse(data2, data1):.3f}\n")
-        f.write(f"diff rms 1s = {rmse_sig(data2, data1, 0.680):.3f}\n")
-        f.write(f"diff rms 2s = {rmse_sig(data2, data1, 0.950):.3f}\n")
-        f.write(f"diff rms 3s = {rmse_sig(data2, data1, 0.997):.3f}\n")
-        f.write(f"diff rms check = {rmse_sig(data2, data1, 1.415):.3f}\n")
+        f.write("\nCASA minus WSClean")
         f.write("-------------------------------------------------------------------\n")
-        """
+        f.write(diff_stats_txt(casa_data, wsc_data))
+        f.write(f"SSIM: {ssim_wsc_casa:.3f}\n")
+        f.write("\nBluebild minus WSClean")
+        f.write("-------------------------------------------------------------------\n")
+        f.write(diff_stats_txt(bb_data, wsc_data))
+        f.write(f"SSIM: {ssim_bb_wsc:.3f}\n")
+        f.write("\nBluebild minus CASA")
+        f.write("-------------------------------------------------------------------\n")
+        f.write(diff_stats_txt(bb_data, casa_data))
+        f.write(f"SSIM: {ssim_bb_casa:.3f}\n")
 
-    plt.tight_layout()
-    plt.savefig(file_png)
-    print("-I-", file_png)
     print("-I-", file_misc)
 
-
+def diff_stats_txt(data1, data2):
+    diff_data = data1 - data2
+    txt  = f"diff min       = {np.amin(diff_data):.3f}\n"
+    txt += f"diff max       = {np.amax(diff_data):.3f}\n"
+    txt += f"diff rmse      = {rmse(data2, data1):.3f}\n"
+    txt += f"diff rmse 50%  = {rmse_sig(data2, data1, 0.50):.3f}\n"
+    txt += f"diff rmse 75%  = {rmse_sig(data2, data1, 0.75):.3f}\n"
+    txt += f"diff rmse 100% = {rmse_sig(data2, data1, 1.00):.3f}\n"
+    txt += f"diff rmse chk  = {rmse_sig(data2, data1, 1.415):.3f}\n"
+    return txt
 
 
 def plot_bluebild_casa(bipp_grid_npy, bipp_data_npy, bipp_json, fits_file, log_file, outname, outdir):
@@ -928,6 +965,22 @@ def plot_complex_matrix(X, filename, outdir, title, xlabel, ylabel):
     plt.savefig(os.path.join(outdir, filename + '.png'))
     plt.close()
 
+def plot_2d_matrix(X, filename, outdir, title, xlabel, ylabel):
+
+    fig, ax = plt.subplots(1, 1, figsize=(12,12))
+    fig.suptitle(title, fontsize=22)
+
+    im = ax.matshow(X, cmap = 'seismic')
+    ax.set_xlabel(xlabel)
+    ax.set_ylabel(ylabel)
+    ax.tick_params(top=False, labeltop=False, bottom=True, labelbottom=True)
+    divider = make_axes_locatable(ax)
+    cax = divider.append_axes("right", size="5%", pad=0.05)
+    fig.colorbar(im, cax=cax)
+
+    plt.savefig(os.path.join(outdir, filename + '.png'))
+    plt.close()
+
 
 def plot_uvw(uvw, pixw, filename, outdir, title):
 
@@ -953,7 +1006,7 @@ def plot_uvw(uvw, pixw, filename, outdir, title):
     scalor = pixw / 2 / uvi_max
     #print("scalor = ", scalor)
     uv_map = np.zeros((pixw+1, pixw+1))
-    print(uv_map, uv_map.dtype, uv_map.shape)
+    #print(uv_map, uv_map.dtype, uv_map.shape)
 
     already_set = 0
     for i in range(0, len(uvw[:,0])):
@@ -1022,6 +1075,15 @@ if __name__ == "__main__":
     print("-I- consider Bluebild?", do_bb)
     print("-I- consider WSClean? ", do_wsc)
     print("-I- consider CASA?    ", do_casa)
+    
+    if do_casa and not os.path.isfile(args.casa_log):
+        print("-W- Missing CASA log, so will not consider CASA.")
+        do_casa = False
+
+    print("-I- consider Bluebild?", do_bb)
+    print("-I- consider WSClean? ", do_wsc)
+    print("-I- consider CASA?    ", do_casa)
+        
 
 
     if do_bb and do_wsc and do_casa:
@@ -1029,7 +1091,8 @@ if __name__ == "__main__":
                          args.casa_fits, args.casa_log,
                          args.bb_grid, args.bb_data, args.bb_json,
                          args.outdir, args.outname)
-    print("__early_exit__")
+
+    print("-W- Ignore 1 to 1 plots")
     sys.exit(0)
 
     if do_wsc and do_casa:
