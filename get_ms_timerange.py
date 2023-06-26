@@ -55,15 +55,8 @@ def times(msf, channel_id, time_id, column):
 
         N_time = len(_time)
         time_start, time_stop, time_step = time_id.indices(N_time)
-        #print(time_start, time_stop, time_step)
+        #print("-D time_start, time_stop, time_step =", time_start, time_stop, time_step)
 
-        # Only a subset of the MAIN table's columns are needed to extract visibility information.
-        # As such, it makes sense to construct a TaQL query that only extracts the columns of
-        # interest as shown below:
-        #    select ANTENNA1, ANTENNA2, MJD(TIME) as TIME, {column}, FLAG from {self._msf} where TIME in
-        #    (select unique TIME from {self._msf} limit {time_start}:{time_stop}:{time_step})
-        # Unfortunately this query consumes a lot of memory due to the column selection process.
-        # Therefore, we will instead ask for all columns and only access those of interest.
         query = (
             f"select * from {msf} where TIME in "
             f"(select unique TIME from {msf} limit {time_start}:{time_stop}:{time_step})"
@@ -76,6 +69,8 @@ def times(msf, channel_id, time_id, column):
             if mjd > mjd_max: mjd_max = mjd
             if mjd < mjd_min: mjd_min = mjd
         #print(f"-I- mjd = [{mjd_min:.7f}, {mjd_max:.7f}]")
+        mjd_min -= 0.1 / 86400
+        mjd_max += 0.1 / 86400
         t_min = time.Time(mjd_min, format="mjd", scale="utc")
         t_max = time.Time(mjd_max, format="mjd", scale="utc")
         t_min.format = 'isot'
@@ -91,7 +86,7 @@ def times(msf, channel_id, time_id, column):
 def isot_to_ms(t):
     t = t.replace('-','/',2)
     t = t.replace('T','/',1)
-    t = t[:-1]
+    #t = t[:-1]
     return t
 
 
