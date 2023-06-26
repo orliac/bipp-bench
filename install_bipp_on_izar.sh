@@ -48,6 +48,10 @@ if [ ! -d $PACKAGE_ROOT ]; then
     git clone https://github.com/${github_workspace}/${PACKAGE}.git ${PACKAGE_ROOT}
 fi
 
+cd ${PACKAGE_ROOT}
+git branch
+cd -
+
 # Do not pull automatically!
 
 
@@ -100,7 +104,7 @@ echo "BIPP_CMAKE_ARGS: $BIPP_CMAKE_ARGS"
 #BIPP_GPU=CUDA python -m pip install --user --verbose --no-deps --no-build-isolation ${PACKAGE_ROOT} # For prod
 #BIPP_GPU=CUDA python -m pip install --user --verbose --no-deps -e ${PACKAGE_ROOT} # For dev
 # Inside a venv
-BIPP_GPU=CUDA python -m pip install --verbose --no-deps --no-build-isolation ${PACKAGE_ROOT} # For prod
+BIPP_GPU=CUDA python -m pip install --no-deps --no-build-isolation ${PACKAGE_ROOT} # For prod
 #BIPP_GPU=CUDA python -m pip install --verbose --no-deps -e ${PACKAGE_ROOT} # For dev
 
 python -m pip list | grep bipp
