@@ -189,6 +189,7 @@ def check_args(args_in):
     print("-I- sigma          =", args.sigma)
     print("-I- NUFFT epsilon  =", args.nufft_eps)
     print("-I- Output dir.    =", args.output_directory)
+    print("-I- Filter neg eig =", args.filter_negative_eigenvalues)
     print("-I- ------------------------------------------------")
 
     return args
