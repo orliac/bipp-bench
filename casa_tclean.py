@@ -15,8 +15,10 @@ args = parser.parse_args()
 
 # generate standard listobs listing
 print(f"-I- Running CASA listobs on {args.ms_file}")
-listobs(vis=args.ms_file, verbose=True, listfile="casa_listobs.out", overwrite=True)
+#listobs(vis=args.ms_file, verbose=True, listfile="casa_listobs.out", overwrite=True)
 print("\n\n")
+
+print("-D- args.timerange =", args.timerange)
 
 ts = time.time()
 tclean(vis=args.ms_file, imagename=args.out_name, imsize=args.imsize, cell=args.cell, niter=0,
