@@ -22,11 +22,17 @@ import bipp.statistics as vis
 import bipptb
 import plots
 
+print(f"-I- SLURM_CPUS_PER_TASK = {os.environ['SLURM_CPUS_PER_TASK']}")
+print(f"-I- OMP_NUM_THREADS     = {os.environ['OMP_NUM_THREADS']}")
+
 # Setting up the benchmark
 args = bipptb.check_args(sys.argv)
 
 # For reproducible results
 np.random.seed(0)
+
+np.set_printoptions(precision=3, linewidth=120)
+
 
 # Create context with selected processing unit.
 # Options are "AUTO", "CPU" and "GPU".
@@ -71,16 +77,21 @@ opt.set_tolerance(args.nufft_eps)
 # A larger number increases memory usage, but usually improves performance.
 # If set to "None", an internal heuristic will be used.
 opt.set_collect_group_size(None)
-opt.set_collect_group_size(1)
+#opt.set_collect_group_size(1)
 
 # Set the domain splitting methods for image and uvw coordinates.
 # Splitting decreases memory usage, but may lead to lower performance.
 # Best used with a wide spread of image or uvw coordinates.
 # Possible options are "grid", "none" or "auto"
-opt.set_local_image_partition(bipp.Partition.grid([1,1,1]))
+#opt.set_local_image_partition(bipp.Partition.grid([12,12,1]))
 #opt.set_local_image_partition(bipp.Partition.auto())
-opt.set_local_uvw_partition(bipp.Partition.grid([1,1,1]))
+opt.set_local_image_partition(bipp.Partition.none())
+#opt.set_local_uvw_partition(bipp.Partition.grid([12,12,1]))
 #opt.set_local_uvw_partition(bipp.Partition.auto())
+opt.set_local_uvw_partition(bipp.Partition.none())
+
+time_id_pe = slice(args.time_start_idx, args.time_end_idx, args.time_slice_pe)
+time_id_im = slice(args.time_start_idx, args.time_end_idx, args.time_slice_im)
 
 
 ### Intensity Field ===========================================================
@@ -102,13 +113,16 @@ if args.debug: # SINGLE EPOCH !!
     I_est.collect(S, G)
 else:
     first_ep = True
-    for t, f, S in ms.visibilities(channel_id=channel_ids, time_id=slice(None, None, args.time_slice_pe), column="DATA"):
+    it = 0
+    t0 = time.time()
+    for t, f, S in ms.visibilities(channel_id=channel_ids, time_id=time_id_pe, column="DATA"):
+        t1 = time.time()
         wl   = constants.speed_of_light / f.to_value(u.Hz)
         XYZ  = ms.instrument(t)
-        Nyq = ms.instrument.nyquist_rate(wl)
-        print(f"-I- Nyq = {Nyq}")
+        t2 = time.time()
         W    = ms.beamformer(XYZ, wl)
         S, W = measurement_set.filter_data(S, W)
+        t3 = time.time()
         if first_ep:
             bipptb.dump_data(np.array(f.to_value(u.Hz)), 'FREQ', args.output_directory, verbose=True)
             bipptb.dump_pkl(XYZ, 'XYZ', args.output_directory, verbose=True)
@@ -118,7 +132,12 @@ else:
             bipptb.dump_pkl(UVW_baselines_t, 'UVW_bsl', args.output_directory, verbose=True)
             first_ep = False
         G = gram(XYZ, W, wl)
+        t4 = time.time()
         I_est.collect(S, G)
+        t5 = time.time()
+        print(f" -- it {it:4d}  t1 = {t1-t0:.3f}  t2 = {t2-t1:.3f} t3 = {t3-t2:.3f}  t4 = {t4-t3:.3f}  t5 = {t5-t4:.3f}")
+        t0 = t5 #reset epoch
+        it += 1
 
 N_eig, intensity_intervals = I_est.infer_parameters()
 print("-I- IFPE N_eig =", N_eig)
@@ -128,7 +147,6 @@ print("-I- XYZ.shape =", XYZ.shape)
 ifpe_e = time.time()
 print(f"#@#IFPE {ifpe_e - ifpe_s:.3f} sec")
 
-#sys.exit(1)
 
 N_antenna, N_station = W.shape
 print("-I- N_antenna =", N_antenna)
@@ -169,29 +187,27 @@ if args.debug: # SINGLE EPOCH !!
     if i_it < 3: print(f" ... ifim t_it {i_it} {t_it:.3f} sec")
     i_it += 1
 else:
-    for t, f, S in ms.visibilities(channel_id=channel_ids, time_id=slice(None, None, args.time_slice_im), column="DATA"):
+    for t, f, S in ms.visibilities(channel_id=channel_ids, time_id=time_id_im, column="DATA"):
         t_it = time.time()
         wl   = constants.speed_of_light / f.to_value(u.Hz)
         XYZ  = ms.instrument(t)
         UVW_baselines_t = ms.instrument.baselines(t, uvw=True, field_center=ms.field_center)
-        print(S.shape)
-        print(UVW_baselines_t.shape)
-        print(UVW_baselines_t)
-        uvw = np.linalg.norm(UVW_baselines_t, axis=2)
-        print(uvw)
-        print(uvw.shape)
-        print("-D- uvw 80th percentile =", np.percentile(uvw, 80))
-        print(W.shape)
-        xyz = np.linalg.norm(XYZ.data[:, None, :] - XYZ.data[None, ...], axis=2)
-        print(xyz)
-        print(xyz.shape)
-        print(type(xyz))
-        print(xyz.dtype)
-        print("-I- physical max xyz baseline =", np.max(xyz))
-        rad2asec = 180 * 3600 / np.pi
-        bsl_cutoff = wl / args.wsc_scale * rad2asec / 1.35
-        print(f"-I- bsl_cutoff = {bsl_cutoff}")
-        if 1 == 1:
+
+        if 1 == 0:
+            uvw = np.linalg.norm(UVW_baselines_t, axis=2)
+            xyz = np.linalg.norm(XYZ.data[:, None, :] - XYZ.data[None, ...], axis=2)
+            print(f"-I- max uvw baseline at {i_it}/{f:.3f} =", np.max(uvw))
+            print(f"-I- max xyz baseline at {i_it}/{f:.3f} =", np.max(xyz))
+            print(S.shape)
+            print(UVW_baselines_t.shape)
+            print(UVW_baselines_t)
+            print(uvw)
+            print(uvw.shape)
+            print("-D- uvw 80th percentile =", np.percentile(uvw, 80))
+            print(W.shape)
+            rad2asec = 180 * 3600 / np.pi
+            bsl_cutoff = wl / args.wsc_scale * rad2asec / 1.35
+            print(f"-I- bsl_cutoff = {bsl_cutoff}")
             print("-D- Before", np.count_nonzero(S.data))
             idx = np.nonzero(xyz > bsl_cutoff)
             print(idx)
@@ -223,20 +239,30 @@ else:
         if i_it < 3: print(f" ... ifim t_it {i_it} {t_it:.3f} sec")
         i_it += 1
 
-I_lsq  = imager.get("LSQ").reshape((-1, args.pixw, args.pixw))
-print(I_lsq)
+#EO: scale by the number of processed epochs
+#I_lsq = np.divide(imager.get("LSQ").reshape((-1, args.pixw, args.pixw)), i_it)
+I_lsq = imager.get("LSQ").reshape((-1, args.pixw, args.pixw))
+print("-D- I_lsq.shape", I_lsq.shape)
+print("-D- I_lsq =\n", I_lsq)
+
 #I_sqrt = imager.get("SQRT").reshape((-1, args.pixw, args.pixw))
+
 ifim_e = time.time()
 print(f"#@#IFIM {ifim_e - ifim_s:.3f} sec  NVIS {n_vis_ifim}")
+
 
 
 ### Sensitivity Field =========================================================
 
 if 1 == 0:
+    
+    print("\n @@@@@@@@@@ SENSITIVITY @@@@@@@@@@\n")
+
     # Parameter Estimation
     sfpe_s = time.time()
-    S_est = bb_pe.SensitivityFieldParameterEstimator(sigma=args.sigma, ctx=ctx)
-    for t, f, S in ms.visibilities(channel_id=channel_ids, time_id=slice(None, None, args.time_slice_pe), column="DATA"):
+    S_est = bb_pe.SensitivityFieldParameterEstimator(sigma=args.sigma, ctx=ctx,
+                                                     filter_negative_eigenvalues=args.filter_negative_eigenvalues)
+    for t, f, S in ms.visibilities(channel_id=channel_ids, time_id=time_id_pe, column="DATA"):
         wl   = constants.speed_of_light / f.to_value(u.Hz)
         XYZ  = ms.instrument(t)
         W    = ms.beamformer(XYZ, wl)
@@ -250,7 +276,8 @@ if 1 == 0:
 
     # Imaging
     sfim_s = time.time()
-    sensitivity_intervals = np.array([[0, np.finfo("f").max]])
+    #sensitivity_intervals = np.array([[0, np.finfo("f").max]])
+    sensitivity_intervals = np.array([[np.finfo("f").min, np.finfo("f").max]])
     imager = None  # release previous imager first to some additional memory
     imager = bipp.NufftSynthesis(
         ctx,
@@ -262,9 +289,10 @@ if 1 == 0:
         lmn_grid[0],
         lmn_grid[1],
         lmn_grid[2],
-        args.precision)
+        args.precision,
+        args.filter_negative_eigenvalues)
 
-    for t, f, S in ms.visibilities(channel_id=channel_ids, time_id=slice(None, None, args.time_slice_im), column="DATA"):
+    for t, f, S in ms.visibilities(channel_id=channel_ids, time_id=time_id_im, column="DATA"):
         wl   = constants.speed_of_light / f.to_value(u.Hz)
         XYZ  = ms.instrument(t)
         W    = ms.beamformer(XYZ, wl)
@@ -272,9 +300,13 @@ if 1 == 0:
         UVW_baselines_t = ms.instrument.baselines(t, uvw=True, field_center=ms.field_center)
         uvw = frame.reshape_and_scale_uvw(wl, UVW_baselines_t)
         imager.collect(N_eig, wl, sensitivity_intervals, W.data, XYZ.data, uvw, None)
-    sensitivity_image = imager.get("INV_SQ").reshape((-1, args.pixw, args.pixw))
+
+    sensitivity_image = imager.get("INV_SQ").reshape((-1, args.pixw, args.pixw)) / W.data.shape[0]
+    bipptb.dump_data(sensitivity_image.reshape((args.pixw, args.pixw)), 'sensitivity_data', args.output_directory)
+    plots.plot_2d_matrix(sensitivity_image.reshape((args.pixw, args.pixw)), f"sensitivity_{outname}", args.output_directory, "Sensitivity", 'Width [pix]', 'Height [pix]')
     #I_sqrt_eq = s2image.Image(I_sqrt / sensitivity_image, xyz_grid)
     I_lsq_eq  = s2image.Image(I_lsq  / sensitivity_image, xyz_grid)
+    #print(I_lsq_eq.data)
     sfim_e = time.time()
     print(f"#@#SFIM {sfim_e - sfim_s:.3f} sec")
 
@@ -301,6 +333,7 @@ print("-I- I_lsq_eq:\n", I_lsq_eq.data, "\n")
 """
 print("-I- args.output_directory:", args.output_directory)
 
+bipptb.dump_data(I_lsq.data, 'I_lsq_data', args.output_directory)
 bipptb.dump_data(I_lsq_eq.data, 'I_lsq_eq_data', args.output_directory)
 bipptb.dump_data(I_lsq_eq.grid, 'I_lsq_eq_grid', args.output_directory)
 

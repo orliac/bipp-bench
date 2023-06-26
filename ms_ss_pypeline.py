@@ -21,14 +21,20 @@ import pypeline.phased_array.bluebild.parameter_estimator as bb_pe
 import pypeline.phased_array.data_gen.source as source
 import pypeline.phased_array.measurement_set as measurement_set
 from pypeline.util import frame
+
 import bipptb
 import plots
+
+print(f"-I- SLURM_CPUS_PER_TASK = {os.environ['SLURM_CPUS_PER_TASK']}")
+print(f"-I- OMP_NUM_THREADS     = {os.environ['OMP_NUM_THREADS']}")
 
 # Setting up the benchmark
 args = bipptb.check_args(sys.argv)
 
 # For reproducible results
 np.random.seed(0)
+
+np.set_printoptions(precision=3, linewidth=120)
 
 # Create context with selected processing unit.
 # Options are "NONE", "AUTO", "CPU" and "GPU".
@@ -57,6 +63,9 @@ elif args.telescope == 'SKALOW':
     ms = measurement_set.SKALowMeasurementSet(args.ms_file)
 else:
     raise Exception(f"Unknown telescope {args.telescope}!")
+
+outname = f"{args.package}_{args.algo}_{args.processing_unit}"
+
 print(f"-I- ms.field_center = {ms.field_center}")
 gram = bb_gr.GramBlock(ctx)
 
@@ -74,8 +83,11 @@ n_grid = np.sqrt(1 - l_grid ** 2 - m_grid ** 2)  # No -1 if r on the sphere !
 lmn_grid = np.stack((l_grid, m_grid, n_grid), axis=0)
 uvw_frame = frame.uvw_basis(ms.field_center)
 px_grid = np.tensordot(uvw_frame, lmn_grid, axes=1)
+print("-I- lmd_grid.shape =", lmn_grid.shape)
 print("-I- px_grid.shape =", px_grid.shape)
 
+time_id_pe = slice(args.time_start_idx, args.time_end_idx, args.time_slice_pe)
+time_id_im = slice(args.time_start_idx, args.time_end_idx, args.time_slice_im)
 
 ### Intensity Field ===========================================================
 
@@ -83,7 +95,7 @@ print("-I- px_grid.shape =", px_grid.shape)
 ifpe_s = time.time()
 I_est = bb_pe.IntensityFieldParameterEstimator(args.nlev, sigma=args.sigma,
                                                filter_negative_eigenvalues=args.filter_negative_eigenvalues)
-for t, f, S, _ in ms.visibilities(channel_id=[channel_id], time_id=slice(None, None, args.time_slice_pe), column="DATA"):
+for t, f, S, _ in ms.visibilities(channel_id=[channel_id], time_id=time_id_pe, column="DATA"):
     wl_   = constants.speed_of_light / f.to_value(u.Hz)
     if wl_ != wl: raise Exception("Mismatch on frequency")
     XYZ  = ms.instrument(t)
@@ -110,7 +122,8 @@ I_dp = bb_dp.IntensityFieldDataProcessorBlock(N_eig, c_centroid, ctx,
 I_mfs = bb_sd.Spatial_IMFS_Block(wl, px_grid, args.nlev, args.nbits, ctx,
                                  filter_negative_eigenvalues=args.filter_negative_eigenvalues)
 plot_suffix = '_skalow'
-for t, f, S, uvw in ms.visibilities(channel_id=[channel_id], time_id=slice(None, None, args.time_slice_im), column="DATA"):
+i_it = 0
+for t, f, S, uvw in ms.visibilities(channel_id=[channel_id], time_id=time_id_im, column="DATA"):
     wl   = constants.speed_of_light / f.to_value(u.Hz)
     XYZ  = ms.instrument(t)
     plots.plot_uvw(uvw, args.pixw, 'uvw' + plot_suffix, args.output_directory, "UV projected baselines")
@@ -127,7 +140,10 @@ for t, f, S, uvw in ms.visibilities(channel_id=[channel_id], time_id=slice(None,
     D, V, c_idx = I_dp(S, XYZ, W, wl)
     plots.plot_eigen_vectors(V, 'V' + plot_suffix, args.output_directory, "Eigen vectors")
     _ = I_mfs(D, V, XYZ.data, W.data, c_idx)
+    i_it += 1
+
 I_std, I_lsq = I_mfs.as_image()
+
 ifim_e = time.time()
 print(f"#@#IFIM {ifim_e - ifim_s:.3f} sec  NVIS {n_vis_ifim}")
 
@@ -165,11 +181,11 @@ if 1 == 0:
         _ = S_mfs(D, V, XYZ.data, W.data, cluster_idx=np.zeros(N_eig, dtype=int))
     _, S = S_mfs.as_image()
 
-    I_std_eq = s2image.Image(I_std.data / S.data, I_std.grid)
-    I_lsq_eq = s2image.Image(I_lsq.data / S.data, I_lsq.grid)
+    I_std_eq = s2image.Image(I_std.data / S.data / i_it, I_std.grid)
+    I_lsq_eq = s2image.Image(I_lsq.data / S.data / i_it, I_lsq.grid)
 else:
-    I_std_eq = s2image.Image(I_std.data, I_std.grid)
-    I_lsq_eq = s2image.Image(I_lsq.data, I_lsq.grid)
+    I_std_eq = s2image.Image(I_std.data / i_it, I_std.grid)
+    I_lsq_eq = s2image.Image(I_lsq.data / i_it, I_lsq.grid)
     sfpe_s = sfpe_e = sfim_s = sfim_e = 0
 
 sfim_e = time.time()
@@ -177,7 +193,10 @@ print(f"#@#SFIM {sfim_e - sfim_s:.3f} sec")
 
 jkt0_e = time.time()
 print(f"#@#TOT {jkt0_e - jkt0_s:.3f} sec\n")
-    
+
+print("-D- I_lsq_eq.shape", I_lsq_eq.data.shape)
+print("-D- I_lsq_eq =\n", I_lsq_eq.data)
+
 #EO: early exit when profiling
 if os.getenv('BB_EARLY_EXIT') == "1":
     print("-I- early exit signal detected")
