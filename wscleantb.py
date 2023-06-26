@@ -41,7 +41,7 @@ def write_json(wsc_log):
     output_basename  = os.path.basename(wsc_log).replace('.log', '.json')
     output_json =  os.path.join(output_directory, output_basename)
 
-    vis_tot, vis_grid, t_inv, t_pred, t_deconv = get_wsclean_info_from_log(wsc_log)
+    vis_tot, vis_grid, t_inv, t_pred, t_deconv, _ = get_wsclean_info_from_log(wsc_log)
 
     stats = { 
         "timings": {
