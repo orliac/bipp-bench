@@ -2,6 +2,7 @@
 
 set -e
 
+
 # options may be followed by one colon to indicate they have a required argument
 ARGUMENT_LIST=(
     "pipeline"
@@ -12,13 +13,20 @@ ARGUMENT_LIST=(
     "cluster"
     "slurm-opts"
     "algo"
+    "telescope"
     "ms-file"
+    "time-start-idx"
+    "time-end-idx"
     "time-slice-pe"
     "time-slice-im"
     "sigma"
     "wsc_scale"
     "precision"
+    "filter_negative_eigenvalues"
 )
+
+# debug line
+getopt -u -o "" -l "$(printf "%s:," "${ARGUMENT_LIST[@]}")" -- "$@"
 
 if ! options=$(getopt -u -o "" -l "$(printf "%s:," "${ARGUMENT_LIST[@]}")" -- "$@")
 then
@@ -31,20 +39,24 @@ set -- $options
 while [ $# -gt 0 ]
 do
     case "$1" in
-        --pipeline)      pipeline="$2";      shift;;
-        --bench-name)    bench_name="$2";    shift;;
-        --package)       package="$2";       shift;;
-        --proc-unit)     proc_unit="$2";     shift;;
-        --compiler)      compiler="$2";      shift;;
-        --cluster)       cluster="$2";       shift;;
-        --slurm-opts)    slurm_opts="$2";    shift;;
-        --algo)          algo="$2";          shift;;
-        --ms-file)       ms_file="$2";       shift;;
-        --time-slice-pe) time_slice_pe="$2"; shift;;
-        --time-slice-im) time_slice_im="$2"; shift;;
-        --sigma)         sigma="$2";         shift;;
-        --wsc_scale)     wsc_scale="$2";     shift;;
-        --precision)     precision="$2";     shift;;
+        --pipeline)       pipeline="$2";       shift;;
+        --bench-name)     bench_name="$2";     shift;;
+        --package)        package="$2";        shift;;
+        --proc-unit)      proc_unit="$2";      shift;;
+        --compiler)       compiler="$2";       shift;;
+        --cluster)        cluster="$2";        shift;;
+        --slurm-opts)     slurm_opts="$2";     shift;;
+        --algo)           algo="$2";           shift;;
+        --telescope)      telescope="$2";      shift;;
+        --ms-file)        ms_file="$2";        shift;;
+        --time-start-idx) time_start_idx="$2"; shift;;
+        --time-end-idx)   time_end_idx="$2";   shift;;
+        --time-slice-pe)  time_slice_pe="$2";  shift;;
+        --time-slice-im)  time_slice_im="$2";  shift;;
+        --sigma)          sigma="$2";          shift;;
+        --wsc_scale)      wsc_scale="$2";      shift;;
+        --precision)      precision="$2";      shift;;
+        --filter_negative_eigenvalues) fne="$2"; shift;;
         (--) shift; break;;
         (-*) echo "$0: error - unrecognized option $1" 1>&2; exit 1;;
         (*) break;;
@@ -62,14 +74,17 @@ done
 : ${algo:?Missing mandatory --algo option [ss, nufft]}
 : ${sigma:?Missing mandatory --sigma option}
 : ${precision:?Missing mandatory --precision option [single, double]}
+: ${telescope:?Missing mandatory --telescope option}
+: ${fne:?Missing mandatory --filter_negative_eigenvalues option}
 
 if [[ $sigma < 0.0 ]] || [[ $sigma > 1.0 ]]; then
     echo "-E- Invalid value for sigma ($sigma). Must be > 0.0 and < 1.0"
     exit 1
 fi
 if [ "$pipeline" != "lofar_bootes" ] && [ "$pipeline" != "real_lofar_bootes" ] && \
-    [ "$pipeline" != "slim_lofar_bootes" ]; then
-    echo "-E- Only pipelines lofar_bootes_... and real_lofar_bootes_... and slim_lofar_bootes_* llowed"
+    [ "$pipeline" != "slim_lofar_bootes" ] && [ "$pipeline" != "skalow_ms" ] && \
+    [ "$pipeline" != "ms" ]; then
+    echo "-E- Pipeline not reckognized"
     exit 1
 fi
 if [ "$algo" != "ss" ] && [ "$algo" != "nufft" ]; then
@@ -105,6 +120,10 @@ if [ "$proc_unit" == "cpu" ] && [ "$compiler" != "gcc" ]; then  # or intel later
     echo "-E- Incompatible options $proc_unit and $compiler."
     exit 1
 fi
+if [ "$fne" != "0" ] && [ "$fne" != "1" ]; then
+    echo "-E- Incompatible option $fne for fne."
+    exit 1
+fi
 
 #
 ## Generate benchmark input file
@@ -120,8 +139,10 @@ python generate_benchmark_input_file.py \
     --bench_name=$bench_name --proc_unit=$proc_unit \
     --compiler=$compiler --cluster=$cluster --precision=$precision --package=$package \
     --in_file=$in_file --out_dir=$out_dir --ms_file=$ms_file \
+    --time_start_idx=$time_start_idx --time_end_idx=$time_end_idx \
     --time_slice_pe=$time_slice_pe --time_slice_im=$time_slice_im \
-    --sigma=$sigma --wsc_scale=$wsc_scale 
+    --sigma=$sigma --wsc_scale=$wsc_scale \
+    --algo=$algo --telescope=$telescope --filter_negative_eigenvalues=$fne
 
 [ $? -eq 0 ] || (echo "-E- $ python generate_benchmark_input_file.py ... failed" && exit 1)
 echo "-I- Generated input file $in_file"
@@ -148,6 +169,7 @@ cp -v plots.py                           $out_dir
 cp -v wsclean_log_to_json.py             $out_dir
 cp -v casa_log_to_json.py                $out_dir
 cp -v add_time_stats_to_bluebild_json.py $out_dir
+cp -v get_ms_timerange.py                $out_dir
 cp -r $ms_file $out_dir
 
 cd $out_dir

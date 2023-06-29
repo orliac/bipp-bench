@@ -76,6 +76,8 @@ echo SOL_DIR = $SOL_DIR
 SED_LINE_INDEX=$((${SLURM_ARRAY_TASK_ID}+1))
 input_line=$(sed -n ${SED_LINE_INDEX}p $input_file | sed -e's/  */ /g')
 echo "-I- Input line >>$input_line<<"; echo
+TIME_START_IDX="$(get_option_value "$input_line" "--time_start_idx")"
+TIME_END_IDX="$(get_option_value "$input_line" "--time_end_idx")"
 WSC_SIZE="$(get_option_value "$input_line" "--pixw")"
 WSC_SCALE="$(get_option_value "$input_line" "--wsc_scale")"
 MS_FILE="$(get_option_value "$input_line" "--ms_file")"
@@ -93,17 +95,45 @@ ln -s $SOL_DIR/${SLURMOUT_BASENAME} $OUT_DIR/${SLURMOUT_BASENAME}
 RUN_CASA=1
 RUN_WSCLEAN=1
 
-echo =============================================================================
-echo CASA
-echo =============================================================================
+CASA_OUT=dirty_casa
+CASA_LOG=casa.log
+
+
 if [[ $RUN_CASA == 1 ]]; then
+
+    echo =============================================================================
+    echo CASA
+    echo =============================================================================
+
     cp -r $SOL_DIR/$MS_BASENAME .
+
     CASA=~/SKA/casa-6.5.3-28-py3.8/bin/casa
     [ -f $CASA ] || (echo "Fatal. Could not find $CASA" && exit 1)
     which $CASA
     #$CASA --help
-    CASA_OUT=dirty_casa
-    CASA_LOG=casa.log
+
+    source ${ENV_SPACK}/activate.sh
+    source ${VENV}/bin/activate
+
+
+    TIME_FILE=${OUT_DIR}/time.file
+    python $SOL_DIR/get_ms_timerange.py \
+        --ms ${MS_FILE} \
+        --data 'DATA' \
+        --channel_id 0 \
+        --time_start_idx ${TIME_START_IDX} \
+        --time_end_idx ${TIME_END_IDX} \
+        --time_file ${TIME_FILE}
+    cat ${TIME_FILE}
+
+    casa_start=$(sed -n '1p' ${TIME_FILE})
+    casa_end=$(sed -n '2p' ${TIME_FILE})
+    CASA_TIMERANGE="${casa_start}~${casa_end}"
+    echo "CASA_TIMERANGE = $CASA_TIMERANGE"
+
+    deactivate
+    source ${ENV_SPACK}/deactivate.sh
+
     $CASA \
         --nogui \
         --norc \
@@ -114,6 +144,7 @@ if [[ $RUN_CASA == 1 ]]; then
         --out_name ${CASA_OUT} \
         --imsize ${WSC_SIZE} \
         --cell ${WSC_SCALE} \
+        --timerange $CASA_TIMERANGE \
         --spw '*:0'
     echo; echo
 
@@ -128,23 +159,24 @@ else
     source ${VENV}/bin/activate
 fi
 
-echo
-echo =============================================================================
-echo WSClean
-echo =============================================================================
-echo
 
 #-even-timesteps \
 #-apply-primary-beam \
-#-interval 0 1 \
-#-make-psf \
+
+WSCLEAN_PSF="-make-psf"
+WSCLEAN_OUT=dirty_wsclean
+WSCLEAN_LOG=dirty_wsclean.log
+WSCLEAN_CLEAN_OUT=clean_wsclean
+WSCLEAN_CLEAN_LOG=clean_wsclean.log
 
 if [[ $RUN_WSCLEAN == 1 ]]; then
 
+    echo =============================================================================
+    echo WSClean
+    echo =============================================================================
+
     # dirty
     cp -r $SOL_DIR/$MS_BASENAME .
-    WSCLEAN_OUT=dirty_wsclean
-    WSCLEAN_LOG=dirty_wsclean.log
     time wsclean \
         -verbose \
         -log-time \
@@ -153,8 +185,10 @@ if [[ $RUN_WSCLEAN == 1 ]]; then
         -scale ${WSC_SCALE}asec \
         -pol I \
         -weight natural \
-        -niter 0 \
         -name ${WSCLEAN_OUT} \
+        -niter 0 \
+        -make-psf \
+        -interval ${TIME_START_IDX} ${TIME_END_IDX} \
         ${MS_BASENAME} \
         | tee ${WSCLEAN_LOG}
     
@@ -164,8 +198,6 @@ if [[ $RUN_WSCLEAN == 1 ]]; then
 
     # clean
     cp -r $SOL_DIR/$MS_BASENAME .
-    WSCLEAN_CLEAN_OUT=clean_wsclean
-    WSCLEAN_CLEAN_LOG=clean_wsclean.log
     time wsclean \
         -verbose \
         -log-time \
@@ -176,7 +208,8 @@ if [[ $RUN_WSCLEAN == 1 ]]; then
         -weight natural \
         -niter 0 \
         -name ${WSCLEAN_CLEAN_OUT} \
-        -make-psf \
+        $WSCLEAN_PSF \
+        $WSCLEAN_INTERVAL \
         -niter 5000 -mgain 0.8 -threshold 0.1 \
         ${MS_BASENAME} \
         | tee ${WSCLEAN_CLEAN_LOG}
@@ -184,8 +217,6 @@ if [[ $RUN_WSCLEAN == 1 ]]; then
     #echo
     #python $SOL_DIR/wsclean_log_to_json.py --wsc_log ${WSCLEAN_CLEAN_LOG}
     #echo
-
-
 fi
 
 cd -
@@ -198,6 +229,8 @@ BLUEBILD_LOG=$OUT_DIR/bluebild.log
 BLUEBILD_TIME_LOG=$OUT_DIR/bluebild_time.log
 
 export CUDA_ENABLE_COREDUMP_ON_EXCEPTION=1
+
+echo "### input_line = " $input_line
 
 time -p (python -u ${pipeline}_${algo}_${package}.py $input_line | tee ${BLUEBILD_LOG}) 2> ${BLUEBILD_TIME_LOG}
 #time -p (cuda-gdb --args python -u ${pipeline}_${algo}_${package}.py $input_line | tee ${BLUEBILD_LOG}) 2> ${BLUEBILD_TIME_LOG}
@@ -216,6 +249,7 @@ echo ===========================================================================
 echo Generate plots
 echo =============================================================================
 echo
+
 cd $OUT_DIR
 
 PLOTS_CMD=""
@@ -223,16 +257,14 @@ PLOTS_CMD+="python $SOL_DIR/plots.py"
 PLOTS_CMD+=" --bb_grid   I_lsq_eq_grid.npy"
 PLOTS_CMD+=" --bb_data   I_lsq_eq_data.npy"
 PLOTS_CMD+=" --bb_json   stats.json"
-if [[ $RUN_WSCLEAN == 1 ]]; then
-    echo "@@@ Will plot Bluebild vs WSClean"
-    PLOTS_CMD+=" --wsc_fits  ${WSCLEAN_OUT}-dirty.fits"
-    PLOTS_CMD+=" --wsc_log   ${WSCLEAN_LOG}"
-fi
-if [[ $RUN_CASA == 1 ]]; then
-    echo "@@@ Will plot Bluebild vs CASA"
-    PLOTS_CMD+=" --casa_fits ${CASA_OUT}.image.fits"
-    PLOTS_CMD+=" --casa_log  ${CASA_LOG}"
-fi
+PLOTS_CMD+=" --outdir ${OUT_DIR}"
+PLOTS_CMD+=" --outname ABC123"
+PLOTS_CMD+=" --flip_lr"
+PLOTS_CMD+=" --wsc_fits  ${WSCLEAN_OUT}-dirty.fits"
+PLOTS_CMD+=" --wsc_log   ${WSCLEAN_LOG}"
+PLOTS_CMD+=" --casa_fits ${CASA_OUT}.image.fits"
+PLOTS_CMD+=" --casa_log  ${CASA_LOG}"
+
 $PLOTS_CMD
 
 cd -

@@ -18,6 +18,8 @@ def get_args():
     args = p.parse_args()
     
     assert args.time_start_idx < args.time_end_idx
+    
+    print(args)
 
     return args
 

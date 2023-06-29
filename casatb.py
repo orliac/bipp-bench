@@ -42,7 +42,7 @@ def write_json(casa_log):
     output_basename  = os.path.basename(casa_log).replace('.log', '.json')
     output_json =  os.path.join(output_directory, output_basename)
 
-    vis_tot, t_tclean = get_casa_info_from_log(casa_log)
+    vis_tot, t_tclean, casa_info = get_casa_info_from_log(casa_log)
 
     stats = { 
         "timings": {
