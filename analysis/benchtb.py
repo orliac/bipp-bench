@@ -2,7 +2,7 @@ import sys
 import os
 import re
 import json
-
+import warnings
 
 # Specs
 def spec_list():
@@ -78,6 +78,7 @@ def read_json_file(file):
         fp = open(file)
         return json.load(fp)
     else:
+        warnings.warn(f"file {file} not found! CHECK SOLUTION!!")
         return None
 
 def read_bipp_json_stat_file(path_sol):
@@ -90,6 +91,10 @@ def read_casa_json_stat_file(path_sol):
 
 def read_wsclean_json_stat_file(path_sol):
     wsclean_json = os.path.join(path_sol, 'wsclean.json')
+    return read_json_file(wsclean_json)
+
+def read_dirty_wsclean_json_stat_file(path_sol):
+    wsclean_json = os.path.join(path_sol, 'dirty_wsclean.json')
     return read_json_file(wsclean_json)
 
 
@@ -124,11 +129,13 @@ def get_benchmark_hierarchy(bench_root):
 
                             p6 = os.path.join(p5, algo)
                             for nsta in list_directories(p6):                                  #nsta
-                                if int(nsta) not in tree['nstas']: tree['nstas'].append(int(nsta))
+                                if nsta.isdigit() and int(nsta) not in tree['nstas']:
+                                    tree['nstas'].append(int(nsta))
 
                                 p7 = os.path.join(p6, nsta)
                                 for nlev in list_directories(p7):                              #nlev
-                                    if int(nlev) not in tree['nlevs']: tree['nlevs'].append(int(nlev))
+                                    if nlev.isdigit() and int(nlev) not in tree['nlevs']:
+                                        tree['nlevs'].append(int(nlev))
 
                                     p8 = os.path.join(p7, nlev)
                                     for pixw in list_directories(p8):                          #pixw
