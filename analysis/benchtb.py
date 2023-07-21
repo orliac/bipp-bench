@@ -3,6 +3,7 @@ import os
 import re
 import json
 import warnings
+import numpy
 
 # Specs
 def spec_list():
@@ -35,6 +36,56 @@ def stats_image_diff(image1, image2):
     rmse = numpy.sqrt(numpy.sum(diff**2)/numpy.size(diff))
     max_abs = numpy.max(numpy.abs(diff))
     return rmse, max_abs
+
+
+# Compute the RMSE between two images with random number of energy
+# levels (axis 0). Lengths of axis 1 and 2 must match.
+# 
+def stats_image_diff_compressing_levels(image1, image2):
+    assert len(image1.shape) == 3
+    assert len(image2.shape) == 3
+    assert image1.shape[1:3] == image2.shape[1:3], \
+        f"-E- shapes of images to compare do not match on 2nd and 3rd dimensions {image1.data.shape[1:3]} vs {image2.data.shape[1:3]}"
+    img1 = numpy.sum(image1, axis=0)
+    img2 = numpy.sum(image2, axis=0)
+    return stats_image_diff(img1, img2)
+
+
+def get_solution_nickname_from_path(bench_root, path_sol):
+
+    specs = get_solution_specs_from_path(path_sol, bench_root)
+
+    if specs['package'] == 'bipp':
+        nick_long  = 'Bipp'
+        nick_short = 'b' #'B'
+    elif specs['package'] == 'pypeline':
+        nick_long  = 'Bluebild'
+        nick_short = 'p' #'Bb'
+    else:
+        raise Exception(f"Unknown package {specs['package']}")
+
+    if specs['proc_unit'] == 'none':
+        nick_long  += 'Cpu'
+        nick_short += 'c' #'C'
+    elif specs['proc_unit'] == 'cpu':
+        nick_long  += 'Cpu'
+        nick_short += 'c' #'C'
+    elif specs['proc_unit'] == 'gpu':
+        nick_long  += 'Gpu'
+        nick_short += 'g' #'G'
+    else:
+        raise Exception(f"Unknown proc_unit {specs['proc_unit']}")
+
+    if specs['algo'] == 'ss':
+        nick_long  += 'Ss'
+        nick_short += 's' #'S'
+    elif specs['algo'] == 'nufft':
+        nick_long  += 'Nufft'
+        nick_short += 'n' #'N'
+    else:
+        raise Exception(f"Unknown algo {specs['algo']}")
+    
+    return nick_long, nick_short
 
 
 def get_list_of_solutions(bench_root, nsta, nlev, pixw):
@@ -81,12 +132,16 @@ def read_json_file(file):
         warnings.warn(f"file {file} not found! CHECK SOLUTION!!")
         return None
 
-def read_bipp_json_stat_file(path_sol):
-    bipp_json = os.path.join(path_sol, 'stats.json')
-    return read_json_file(bipp_json)
+def read_bipp_json_stat_file(fp):
+    bipp_json = os.path.join(fp)
+    return read_json_file(fp)
 
 def read_casa_json_stat_file(path_sol):
     casa_json = os.path.join(path_sol, 'casa.json')
+    return read_json_file(casa_json)
+
+def read_dirty_casa_json_stat_file(path_sol):
+    casa_json = os.path.join(path_sol, 'dirty_casa.json')
     return read_json_file(casa_json)
 
 def read_wsclean_json_stat_file(path_sol):
