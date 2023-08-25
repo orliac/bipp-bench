@@ -13,6 +13,25 @@ import wscleantb
 import casatb
 from skimage.metrics import structural_similarity as ssim
 from matplotlib.patches import Circle
+from astropy.wcs import WCS
+from astropy import units as u
+from astropy.coordinates import SkyCoord
+
+def compute_rmse(y1, y2):
+    return np.linalg.norm(y1 - y2) / len(y1)
+
+
+def compute_rmse_sig(y1, y2, sig):
+    assert(y1.shape == y2.shape)
+    assert(y1.shape[0] == y1.shape[1])
+    x = np.arange(0, y1.shape[0])
+    y = np.arange(0, y1.shape[0])
+    cxy = y1.shape[0] / 2 
+    R1 = y1.shape[0] / 2 * sig
+    mask = (x[np.newaxis,:]-cxy)**2 + (y[:,np.newaxis]-cxy)**2 > R1**2
+    diff = y1 - y2
+    diff[mask] = 0.0
+    return np.sqrt(np.sum(np.square(diff)) / y1.size)
 
 
 def read_fits_file(fits_file):
@@ -37,7 +56,470 @@ def get_bipp_info_from_json(bipp_json):
     return bipp_info
 
 
+def my_subplot_original():
+
+    """
+    for j in wsc_data.shape[1] / 2, :
+        for i in range(0, wsc_data.shape[0] - 1, 100):
+            sky0 = wcs.pixel_to_world(i,   j, 0, 0)[0]
+            sky1 = wcs.pixel_to_world(i+1, j, 0, 0)[0]
+            #print(sky0, sky1)
+            print(f"{i} {j} {(sky0.ra.deg - sky1.ra.deg) * 3600:.6f} [asec]")
+    """
+    
+
+    #extent = (1024, 0, 1024, 0)
+    #extent = (0, 1024, 0, 1024)
+
+    plt.subplot(111, projection=wcs, slices=('x', 'y', 0, 0))
+
+    #plt.imshow(wsc_data, extent=extent, vmin=-0.1, vmax=1.1,
+    plt.imshow(wsc_data, vmin=-0.1, vmax=1.1,
+               interpolation ="nearest")#, origin ="upper")
+    #plt.gca().invert_xaxis()
+
+    plt.gca().coords[0].set_ticks_position('b')
+    plt.gca().coords[1].set_ticks_position('l')
+    plt.gca().secondary_yaxis('right')
+    plt.gca().secondary_xaxis('top')
+
+    il = 0
+    with open(args.sky_file) as sky_file:
+        for src_line in sky_file:
+            if il%3 != 0:
+                il += 1
+                continue
+            id, ra, dec, px, py, intensity = src_line.strip().split(" ")
+            id, ra, dec, px, py, intensity = int(id), float(ra), float(dec), int(px), int(py), float(intensity)
+            #print(id, ra, dec, px, py, intensity)
+            sky = SkyCoord(ra=ra*u.degree, dec=dec*u.degree, frame='icrs')
+            pix = wcs.wcs_world2pix(sky.ra, sky.dec, 100000000.0, 1.0, 0)
+            print(f"{id:2d} ra = {sky.ra.deg:.4f} {sky.ra.to_string(u.hour)} {dec:.4f} {intensity:.1f} ==>  {pix[0]:.2f} {pix[1]:.2f}")
+
+            S = 100
+            axin = plt.gca().inset_axes([int(pix[0]) - 1.3*S, int(pix[1]) - S/2, S, S],
+                                        transform = plt.gca().transData)
+
+            #axin.imshow(wsc_data, extent=extent,vmin=-0.1, vmax=1.1,
+            axin.imshow(wsc_data, vmin=-0.1, vmax=1.1,
+                        interpolation ="nearest", origin ="lower")
+
+            # Box to highlight zoomed in region
+            x1, x2, y1, y2 = int(pix[0]) -8, int(pix[0]) +9, int(pix[1]) -8, int(pix[1]) + 9
+            axin.set_xlim(x1, x2)
+            axin.set_ylim(y1, y2)
+            axin.set_xticks([])
+            axin.set_yticks([])
+            plt.gca().indicate_inset_zoom(axin, edgecolor="black")
+
+            # Mark true position of source
+            axin.plot(pix[0], pix[1], '+', linewidth=0.1, markersize=.5, color='red')
+            
+            il += 1
+
+    plt.savefig('abc123', bbox_inches='tight', dpi=1400)
+    sys.exit(0)
+
+
+def my_subplot(plt, wcs, data, vmin, vmax, plot_grid, plot_circles, npix, cmap):
+    
+    plt.imshow(data, vmin=vmin, vmax=vmax, interpolation ="nearest", origin ="lower",
+                        extent=[0, npix, 0, npix], aspect=1, cmap=cmap)
+
+    plt.gca().coords[0].set_ticks_position('b')
+    plt.gca().coords[1].set_ticks_position('l')
+    plt.gca().secondary_yaxis('right')
+    plt.gca().secondary_xaxis('top')
+
+    if plot_grid:
+        plt.grid(color='white', ls='solid')
+
+    if plot_circles:
+        r1 = Circle((half_width_pix, half_width_pix), rad1_pix, edgecolor='darkorange', facecolor='none')
+        plt.gca().add_patch(r1)
+        r2 = Circle((half_width_pix, half_width_pix), rad2_pix, edgecolor='fuchsia', facecolor='none')
+        plt.gca().add_patch(r2)
+        r3 = Circle((half_width_pix, half_width_pix), rad3_pix, edgecolor='black', facecolor='none')
+        plt.gca().add_patch(r3)
+
+
+    il = 0
+    with open(args.sky_file) as sky_file:
+        for src_line in sky_file:
+            #if il%3 != 0:
+            #    il += 1
+            #    continue
+            id, ra, dec, px, py, intensity = src_line.strip().split(" ")
+            id, ra, dec, px, py, intensity = int(id), float(ra), float(dec), float(px), float(py), float(intensity)
+            #print(id, ra, dec, px, py, intensity)
+            sky = SkyCoord(ra=ra*u.degree, dec=dec*u.degree, frame='icrs')
+            pix = wcs.wcs_world2pix(sky.ra, sky.dec, 100000000.0, 1.0, 0)
+            print(f"{id:2d} (!{px}, {py}!) ra = {sky.ra.deg:.4f} {sky.ra.to_string(u.hour)} {dec:.4f} {intensity:.1f} ==>  {pix[0]:.2f} {pix[1]:.2f}")
+
+            S = int(npix * 0.20)
+            offset = 0
+            if int(pix[1] + S/2) > npix:
+                offset = npix - int(pix[1] + S/2) - int(npix * 0.01)
+            if int(pix[1] - S/2) < 0:
+                offset = 0 - int(pix[1] - S/2) + int(npix * 0.01)
+            axin = plt.gca().inset_axes([int(pix[0] + npix * 0.02), int(pix[1]) - int(S/2 - offset), S, S],
+                                        transform = plt.gca().transData)
+
+            test = axin.imshow(data, vmin=vmin, vmax=vmax, interpolation ="nearest", origin ="lower",
+                               extent=[0, npix, 0, npix], aspect=1, cmap=cmap)
+
+            # Box to highlight zoomed in region
+            x_ref = int(pix[0])
+            y_ref = int(pix[1])
+            lhw   = 6
+            rhw   = lhw + 1
+            x1, x2, y1, y2 = x_ref - lhw, x_ref + rhw, y_ref - lhw, y_ref + rhw
+            axin.set_xlim(x1, x2)
+            axin.set_ylim(y1, y2)
+            axin.set_xticks([])
+            axin.set_yticks([])
+            plt.gca().indicate_inset_zoom(axin, edgecolor="black")
+
+            # Mark true position of source
+            axin.plot(pix[0], pix[1], '+', linewidth=0.05, markersize=7, color='fuchsia')
+            
+            # Find pixel of highest intensity in zoomed in region
+
+            i_max = -1E10
+            x_max, y_max = -1, -1
+            for x in range(x1, x2+1):
+                for y in range(y1, y2+1):
+                    #axin.plot(x, y, '*', linewidth=0.05, markersize=4, color='fuchsia')
+                    if data[y][x] > i_max: #!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!! INDICES INVERTED !!!! TBC
+                        x_max, y_max, i_max = x, y, data[y][x]
+            #print(f" .. max found on pixel {x_max}, {y_max} with intensity {data[x_max][y_max]}")
+            axin.plot(x_max + 0.5, y_max + 0.5, 'x', linewidth=0.05, markersize=4, color='black')
+            il += 1
+            break
+
+
+def my_subplot_no_proj(plt, wcs, data, vmin, vmax, plot_grid, plot_circles, npix, cmap):
+    
+    plt.imshow(data, vmin=vmin, vmax=vmax, interpolation ="nearest", origin ="lower",
+                        extent=[0, npix, 0, npix], aspect=1, cmap=cmap)
+
+    print(data.flags)
+    return
+
+    """
+    plt.gca().coords[0].set_ticks_position('b')
+    plt.gca().coords[1].set_ticks_position('l')
+    plt.gca().secondary_yaxis('right')
+    plt.gca().secondary_xaxis('top')
+
+    if plot_grid:
+        plt.grid(color='white', ls='solid')
+
+    if plot_circles:
+        r1 = Circle((half_width_pix, half_width_pix), rad1_pix, edgecolor='darkorange', facecolor='none')
+        plt.gca().add_patch(r1)
+        r2 = Circle((half_width_pix, half_width_pix), rad2_pix, edgecolor='fuchsia', facecolor='none')
+        plt.gca().add_patch(r2)
+        r3 = Circle((half_width_pix, half_width_pix), rad3_pix, edgecolor='black', facecolor='none')
+        plt.gca().add_patch(r3)
+    """
+
+    il = 0
+    with open(args.sky_file) as sky_file:
+        for src_line in sky_file:
+            #if il%3 != 0:
+            #    il += 1
+            #    continue
+            id, ra, dec, px, py, intensity = src_line.strip().split(" ")
+            id, ra, dec, px, py, intensity = int(id), float(ra), float(dec), int(px), int(py), float(intensity)
+            #print(id, ra, dec, px, py, intensity)
+            sky = SkyCoord(ra=ra*u.degree, dec=dec*u.degree, frame='icrs')
+            pix = wcs.wcs_world2pix(sky.ra, sky.dec, 100000000.0, 1.0, 0)
+            print(f"{id:2d} (!{px}, {py}!) ra = {sky.ra.deg:.4f} {sky.ra.to_string(u.hour)} {dec:.4f} {intensity:.1f} ==>  {pix[0]:.2f} {pix[1]:.2f}")
+            print("pix=", pix)
+
+            S = int(npix * 0.20)
+            offset = 0
+            if int(pix[1] + S/2) > npix:
+                offset = npix - int(pix[1] + S/2) - int(npix * 0.01)
+            if int(pix[1] - S/2) < 0:
+                offset = 0 - int(pix[1] - S/2) + int(npix * 0.01)
+
+            axin = plt.gca().inset_axes([int(pix[0] + npix * 0.02), int(pix[1]) - int(S/2 - offset), S, S],
+                                        transform = plt.gca().transData)
+            
+            axin.imshow(data, vmin=vmin, vmax=vmax, interpolation ="nearest", origin ="lower",
+                        extent=[0, npix, 0, npix], aspect=1, cmap=cmap)
+
+            # Box to highlight zoomed in region
+            x_ref = int(pix[0])
+            y_ref = int(pix[1])
+            lhw   = 6
+            rhw   = lhw + 1
+            x1, x2, y1, y2 = x_ref - lhw, x_ref + rhw, y_ref - lhw, y_ref + rhw
+            axin.set_xlim(x1, x2)
+            axin.set_ylim(y1, y2)
+            axin.set_xticks([])
+            axin.set_yticks([])
+            plt.gca().indicate_inset_zoom(axin, edgecolor="black")
+
+            # Mark true position of source
+            axin.plot(pix[0], pix[1], '+', linewidth=0.05, markersize=7, color='fuchsia')
+            
+            # Find pixel of highest intensity in zoomed in region
+
+            i_max = -1E10
+            x_max, y_max = -1, -1
+            for x in range(x1, x2+1):
+                for y in range(y1, y2+1):
+                    #axin.plot(x, y, '*', linewidth=0.05, markersize=4, color='fuchsia')
+                    #print(f"{x}, {y} => {data[y][x]}")
+                    if data[y][x] > i_max:
+                        x_max, y_max, i_max = x, y, data[y][x]
+                        
+            print(f" .. max found on pixel {x_max}, {y_max} with intensity {data[x_max][y_max]}")
+            axin.plot(x_max, y_max, 'c', linewidth=0.05, markersize=4, color='black')
+            il += 1
+            break
+
+
 def plot_wsc_casa_bb(wsc_fits, wsc_log, casa_fits, casa_log, bb_grid, bb_data, bb_json,
+                     outdir, outname):
+
+    bb_ori = np.sum(np.load(bb_data).transpose(1,2,0), axis=2)
+    print(bb_ori.shape)
+
+    outname += f"_wsc_casa_bb"
+
+    bb_info = get_bipp_info_from_json(bb_json)
+
+    if not os.path.isfile(casa_log):
+        raise Warning(f"{casa_log} not found. Abort plot.")
+        return
+
+    _, _, casa_info = casatb.get_casa_info_from_log(casa_log)
+    _, _, _, _, _, wsc_info = wscleantb.get_wsclean_info_from_log(wsc_log)
+    print(bb_info)
+    print(casa_info)
+    print(wsc_info)
+
+    # !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+    #  WARNING! Hacking wsclean fits file to injec bipp's data
+    # !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+    import shutil
+    bb_fits = wsc_fits + '_bb_hack.fits'
+    shutil.copyfile(wsc_fits, bb_fits)
+    hdulist = fits.open(bb_fits)
+    hdulist[0].data = np.sum(np.load(bb_data).transpose(1,2,0), axis=2)
+    if args.flip_lr:
+        hdulist[0].data = np.fliplr(hdulist[0].data)
+    if args.flip_ud:
+        hdulist[0].data = np.flipud(hdulist[0].data)
+    hdulist.writeto(bb_fits, overwrite=True)
+    hdulist.close()
+
+    wsc_hdu  = fits.open(wsc_fits)[0]
+    casa_hdu = fits.open(casa_fits)[0]
+    bb_hdu   = fits.open(bb_fits)[0]
+    for hdu in wsc_hdu, casa_hdu, bb_hdu:
+        print(hdu.data.shape)
+        if hdu.data.shape[0] == 1 and hdu.data.shape[1] == 1:
+            hdu.data = hdu.data.reshape(hdu.data.shape[2:4])
+        print(hdu.data.shape)
+
+    wsc_wcs  = WCS(wsc_hdu.header)
+    casa_wcs = WCS(casa_hdu.header)
+    bb_wcs   = WCS(bb_hdu.header)
+
+    wcs = wsc_wcs
+    print("wcs =", wcs)
+
+    wsc_data  = wsc_hdu.data
+    casa_data = casa_hdu.data
+    bb_data   = bb_hdu.data
+
+    diff_casa_wsc = casa_data - wsc_data
+    diff_bb_wsc   = bb_data   - wsc_data
+    diff_bb_casa  = bb_data   - casa_data
+
+    npix = wsc_data.shape[0]
+    print(f"-D- npix = {npix}")
+
+    # color bar min/max
+    casa_min, casa_max = np.amin(casa_data), np.amax(casa_data)
+    wsc_min,  wsc_max  = np.amin(wsc_data),  np.amax(wsc_data)
+    bb_min,   bb_max   = np.amin(bb_data),   np.amax(bb_data)
+    print(f"-I- CASA     = [{casa_min:.6e}, {casa_max:.6e}]")
+    print(f"-I- WSClean  = [{wsc_min:.6e}, {wsc_max:.6e}]")
+    print(f"-I- Bluebild = [{bb_min:.6e}, {bb_max:.6e}]")
+
+    zmin = min(wsc_min, casa_min, bb_min)
+    zmax = max(wsc_max, casa_max, bb_max)
+    print(f"-D- range = [{zmin:.6e}, {zmax:.6e}]")
+    max_absz = max(abs(zmin), abs(zmax))
+    dmin = min(np.amin(diff_casa_wsc), np.amin(diff_bb_wsc), np.amin(diff_bb_casa))
+    dmax = max(np.amax(diff_casa_wsc), np.amax(diff_bb_wsc), np.amax(diff_bb_casa))
+    print(f"-D- diff  = [{dmin:.6e}, {dmax:.6e}]")
+    abs_max = max(abs(dmin), abs(dmax))
+    print(f"-D- max abs diff = {abs_max:.6e}")
+
+    #sys.exit(0)
+
+    rad1 = 0.50
+    rad2 = 0.75
+    rad3 = 1.00
+
+    half_width_pix = bb_data.shape[0] / 2 #EO: check if that always hold!
+    rad1_pix = rad1 * half_width_pix
+    rad2_pix = rad2 * half_width_pix
+    rad3_pix = rad3 * half_width_pix
+
+    plt.clf()
+    fig = plt.figure(figsize=(21,14)) 
+
+    plt.rc('axes',  titlesize=20) 
+    plt.rc('axes',  labelsize=16)
+    plt.rc('xtick', labelsize=14)
+    plt.rc('ytick', labelsize=14)
+
+    vmin, vmax = -max_absz, max_absz
+    vmin, vmax = zmin, zmax
+
+    plot_grid = False
+    plot_circles = False
+
+    my_viridis = plt.cm.viridis
+    my_viridis.set_bad((1, 0, 0, 1))
+
+    ### CASA
+    plt.subplot(231, projection=wcs, slices=('x', 'y', 0, 0))
+    my_subplot(plt, wcs, casa_data, vmin, vmax, plot_grid, plot_circles, npix, 'viridis')
+    plt.gca().coords[0].set_axislabel(" ")
+    plt.gca().coords[0].set_ticklabel_visible(True)
+    plt.gca().coords[1].set_axislabel("Declination")
+
+    """
+    plt.subplot(231)
+    print(type(casa_data))
+    print(casa_data)
+    my_subplot_no_proj(plt, wcs, wsc_data, vmin, vmax, plot_grid, plot_circles, npix, 'viridis')
+    plt.title('(a) WSClean', pad=14)
+    plt.subplot(234)
+    print(type(bb_ori))
+    print(bb_ori)
+    my_subplot_no_proj(plt, wcs, bb_ori, vmin, vmax, plot_grid, plot_circles, npix, 'viridis')
+    plt.title('(a) Bluebild', pad=14)
+    """
+    """
+    ### WSClean
+    plt.subplot(232, projection=wcs, slices=('x', 'y', 0, 0))
+    my_subplot(plt, wcs, wsc_data, vmin, vmax, plot_grid, plot_circles, npix, 'viridis')
+    plt.title('(b) WSClean', pad=14)
+    plt.gca().coords[0].set_axislabel(" ")
+    plt.gca().coords[0].set_ticklabel_visible(True)
+    plt.gca().coords[1].set_axislabel(" ")
+    plt.gca().coords[1].set_ticklabel_visible(True)
+
+    ### Bluebild
+    plt.subplot(233, projection=wcs, slices=('x', 'y', 0, 0))
+    my_subplot(plt, wcs, bb_data, vmin, vmax, plot_grid, plot_circles, npix, 'viridis')
+    plt.title('(c) Bluebild', pad=14)
+    plt.gca().coords[0].set_axislabel(" ")
+    plt.gca().coords[0].set_ticklabel_visible(True)
+    plt.gca().coords[1].set_axislabel(" ")
+    plt.gca().coords[1].set_ticklabel_visible(True)
+    """
+    cb_ax = fig.add_axes([0.92, 0.535, 0.012, 0.34])
+    cbar = plt.colorbar(cax=cb_ax)
+    cbar.ax.tick_params(size=0)
+
+
+    ### Diff plots
+    
+    plot_grid = False
+    plot_circles = False
+
+    plt.subplot(234, projection=wcs, slices=('x', 'y', 0, 0))
+    my_subplot(plt, wcs, diff_casa_wsc, -abs_max, abs_max, plot_grid, plot_circles, npix, 'seismic')
+    plt.title('(d) CASA minus WSClean', pad=14)
+    plt.gca().coords[0].set_axislabel("Right ascension")
+    plt.gca().coords[1].set_axislabel("Declination")
+    plt.gca().set_autoscale_on(False)
+
+    """
+    plt.gca().set_autoscale_on(False)
+    plt.subplot(235, projection=wcs, slices=('x', 'y', 0, 0))
+    my_subplot(plt, wcs, diff_bb_casa, -abs_max, abs_max, plot_grid, plot_circles, npix, 'seismic')
+    plt.title('(e) Bluebild minus CASA', pad=14)
+    plt.gca().coords[0].set_axislabel("Right ascension")
+    plt.gca().coords[1].set_axislabel(" ")
+    plt.gca().coords[1].set_ticklabel_visible(True)
+
+    plt.gca().set_autoscale_on(False)
+    plt.subplot(236, projection=wcs, slices=('x', 'y', 0, 0))
+    my_subplot(plt, wcs, diff_bb_wsc, -abs_max, abs_max, plot_grid, plot_circles, npix, 'seismic')
+    plt.title('(f) Bluebild minus WSClean', pad=14)
+    plt.gca().coords[0].set_axislabel("Right ascension")
+    plt.gca().coords[1].set_axislabel(" ")
+    plt.gca().coords[1].set_ticklabel_visible(True)
+    """
+
+    cb_ax = fig.add_axes([0.92, 0.115, 0.012, 0.34])
+    cbar = plt.colorbar(cax=cb_ax)
+    cbar.ax.tick_params(size=0)
+
+
+    # Write .png and associated .misc file
+    basename = os.path.join(outdir, outname)
+    file_png  = basename + '.png'
+    file_misc = basename + '.misc'
+    file_json = basename + '.json'
+
+    plt.savefig(file_png, bbox_inches='tight', dpi=1400)
+    print("-I-", file_png)
+
+    casa_wsc_txt, casa_wsc_json = diff_stats_txt(casa_data, 'casa', wsc_data,  'wsc')
+    bb_wsc_txt,   bb_wsc_json   = diff_stats_txt(bb_data,   'bb',   wsc_data,  'wsc')
+    bb_casa_txt,  bb_casa_json  = diff_stats_txt(bb_data,   'bb',   casa_data, 'casa')
+
+    with open(file_misc, 'w') as f:
+        f.write("WSClean\n")
+        f.write("-------------------------------------------------------------------\n")
+        f.write(wsc_info)
+        f.write("\nCASA\n")
+        f.write("-------------------------------------------------------------------\n")
+        f.write(casa_info)
+        f.write("\nBluebild\n")
+        f.write("-------------------------------------------------------------------\n")
+        f.write(bb_info)
+        f.write("\nCASA minus WSClean")
+        f.write("-------------------------------------------------------------------\n")
+        f.write(casa_wsc_txt)
+        f.write(f"SSIM: {casa_wsc_json['casa-wsc']['ssim']:.3f}\n")
+        f.write("\nBluebild minus WSClean")
+        f.write("-------------------------------------------------------------------\n")
+        f.write(bb_wsc_txt)
+        f.write(f"SSIM: {bb_wsc_json['bb-wsc']['ssim']:.3f}\n")
+        f.write("\nBluebild minus CASA")
+        f.write("-------------------------------------------------------------------\n")
+        f.write(bb_casa_txt)
+        f.write(f"SSIM: {bb_casa_json['bb-casa']['ssim']:.3f}\n")
+    print("-I-", file_misc)
+
+    with open(file_json, 'w') as f:
+        json.dump({'casa-wsc': casa_wsc_json,
+                   'bb-wsc':   bb_wsc_json,
+                   'bb_casa':  bb_casa_json}, f)
+    print("-I-", file_json)
+
+    #with open(file_json, 'r') as f:
+    #    chk = json.load(f)
+    #    print(chk)
+    #    print(chk['casa-wsc']['casa']['min'])
+
+
+
+def plot_wsc_casa_bb_OLD_but_modified(wsc_fits, wsc_log, casa_fits, casa_log, bb_grid, bb_data, bb_json,
                      outdir, outname):
 
     outname += f"_wsc_casa_bb"
@@ -64,29 +546,99 @@ def plot_wsc_casa_bb(wsc_fits, wsc_log, casa_fits, casa_log, bb_grid, bb_data, b
     hdulist[0].data = np.sum(np.load(bb_data).transpose(1,2,0), axis=2)
     if args.flip_lr:
         hdulist[0].data = np.fliplr(hdulist[0].data)
+    if args.flip_ud:
+        hdulist[0].data = np.flipud(hdulist[0].data)
     hdulist.writeto(bb_fits, overwrite=True)
     hdulist.close()
 
-    from astropy.wcs import WCS
+
+    wsc_hdu  = fits.open(wsc_fits)[0]
+    wcs  = WCS(wsc_hdu.header)
+    print("wcs =", wcs)
+
 
     wsc_hdu  = fits.open(wsc_fits)[0]
     casa_hdu = fits.open(casa_fits)[0]
     bb_hdu   = fits.open(bb_fits)[0]
     for hdu in wsc_hdu, casa_hdu, bb_hdu:
-        #print(hdu.data.shape)
+        print(hdu.data.shape)
         if hdu.data.shape[0] == 1 and hdu.data.shape[1] == 1:
             hdu.data = hdu.data.reshape(hdu.data.shape[2:4])
-        #print(hdu.data.shape)
+        print(hdu.data.shape)
 
     wsc_wcs  = WCS(wsc_hdu.header)
     casa_wcs = WCS(casa_hdu.header)
     bb_wcs   = WCS(bb_hdu.header)
 
     wcs = wsc_wcs
+    print("wcs =", wcs)
 
     wsc_data  = wsc_hdu.data
     casa_data = casa_hdu.data
     bb_data   = bb_hdu.data
+
+    """
+    for j in wsc_data.shape[1] / 2, :
+        for i in range(0, wsc_data.shape[0] - 1, 100):
+            sky0 = wcs.pixel_to_world(i,   j, 0, 0)[0]
+            sky1 = wcs.pixel_to_world(i+1, j, 0, 0)[0]
+            #print(sky0, sky1)
+            print(f"{i} {j} {(sky0.ra.deg - sky1.ra.deg) * 3600:.6f} [asec]")
+    """
+    
+
+    #extent = (1024, 0, 1024, 0)
+    #extent = (0, 1024, 0, 1024)
+
+    plt.subplot(111, projection=wcs, slices=('x', 'y', 0, 0))
+
+    #plt.imshow(wsc_data, extent=extent, vmin=-0.1, vmax=1.1,
+    plt.imshow(wsc_data, vmin=-0.1, vmax=1.1,
+               interpolation ="nearest")#, origin ="upper")
+    #plt.gca().invert_xaxis()
+
+    plt.gca().coords[0].set_ticks_position('b')
+    plt.gca().coords[1].set_ticks_position('l')
+    plt.gca().secondary_yaxis('right')
+    plt.gca().secondary_xaxis('top')
+
+    il = 0
+    with open(args.sky_file) as sky_file:
+        for src_line in sky_file:
+            if il%3 != 0:
+                il += 1
+                continue
+            id, ra, dec, px, py, intensity = src_line.strip().split(" ")
+            id, ra, dec, px, py, intensity = int(id), float(ra), float(dec), int(px), int(py), float(intensity)
+            #print(id, ra, dec, px, py, intensity)
+            sky = SkyCoord(ra=ra*u.degree, dec=dec*u.degree, frame='icrs')
+            pix = wcs.wcs_world2pix(sky.ra, sky.dec, 100000000.0, 1.0, 0)
+            print(f"{id:2d} ra = {sky.ra.deg:.4f} {sky.ra.to_string(u.hour)} {dec:.4f} {intensity:.1f} ==>  {pix[0]:.2f} {pix[1]:.2f}")
+
+            S = 100
+            axin = plt.gca().inset_axes([int(pix[0]) - 1.3*S, int(pix[1]) - S/2, S, S],
+                                        transform = plt.gca().transData)
+
+            #axin.imshow(wsc_data, extent=extent,vmin=-0.1, vmax=1.1,
+            axin.imshow(wsc_data, vmin=-0.1, vmax=1.1,
+                        interpolation ="nearest", origin ="lower")
+
+            # Box to highlight zoomed in region
+            x1, x2, y1, y2 = int(pix[0]) -8, int(pix[0]) +9, int(pix[1]) -8, int(pix[1]) + 9
+            axin.set_xlim(x1, x2)
+            axin.set_ylim(y1, y2)
+            axin.set_xticks([])
+            axin.set_yticks([])
+            plt.gca().indicate_inset_zoom(axin, edgecolor="black")
+
+            # Mark true position of source
+            axin.plot(pix[0], pix[1], '+', linewidth=0.1, markersize=.5, color='red')
+            
+            il += 1
+
+    plt.savefig('abc123', bbox_inches='tight', dpi=1400)
+    sys.exit(0)
+
 
     diff_casa_wsc = casa_data - wsc_data
     diff_bb_wsc   = bb_data   - wsc_data
@@ -96,34 +648,19 @@ def plot_wsc_casa_bb(wsc_fits, wsc_log, casa_fits, casa_log, bb_grid, bb_data, b
     casa_min, casa_max = np.amin(casa_data), np.amax(casa_data)
     wsc_min,  wsc_max  = np.amin(wsc_data),  np.amax(wsc_data)
     bb_min,   bb_max   = np.amin(bb_data),   np.amax(bb_data)
-    print(f"-I- CASA     = [{casa_min:8.2f}, {casa_max:8.2f}]")
-    print(f"-I- WSClean  = [{wsc_min:8.2f}, {wsc_max:8.2f}]")
-    print(f"-I- Bluebild = [{bb_min:8.2f}, {bb_max:8.2f}]")
+    print(f"-I- CASA     = [{casa_min:.6e}, {casa_max:.6e}]")
+    print(f"-I- WSClean  = [{wsc_min:.6e}, {wsc_max:.6e}]")
+    print(f"-I- Bluebild = [{bb_min:.6e}, {bb_max:.6e}]")
 
     zmin = min(wsc_min, casa_min, bb_min)
     zmax = max(wsc_max, casa_max, bb_max)
-    print(f"-D- range = [{zmin:.3f}, {zmax:.3f}]")
+    print(f"-D- range = [{zmin:.6e}, {zmax:.6e}]")
     max_absz = max(abs(zmin), abs(zmax))
     dmin = min(np.amin(diff_casa_wsc), np.amin(diff_bb_wsc), np.amin(diff_bb_casa))
     dmax = max(np.amax(diff_casa_wsc), np.amax(diff_bb_wsc), np.amax(diff_bb_casa))
-    print(f"-D- diff  = [{dmin:.3f}, {dmax:.3f}]")
+    print(f"-D- diff  = [{dmin:.6e}, {dmax:.6e}]")
     abs_max = max(abs(dmin), abs(dmax))
-    print(f"-D- max abs diff = {abs_max:.3f}")
-
-
-    # Compute structural similarity index (SSIM)
-    bw_min = min(np.amin(wsc_data), np.amin(bb_data))
-    bw_max = max(np.amax(wsc_data), np.amax(bb_data))
-    ssim_bb_wsc  = ssim(wsc_data, bb_data, data_range= bw_max - bw_min)
-    print(f"-I- ssim_bb_wsc  = {ssim_bb_wsc:.3f}")
-    bc_min = min(np.amin(casa_data), np.amin(bb_data))
-    bc_max = max(np.amax(casa_data), np.amax(bb_data))
-    ssim_bb_casa = ssim(casa_data, bb_data, data_range= bc_max - bc_min)
-    print(f"-I- ssim_bb_casa = {ssim_bb_casa:.3f}")
-    wc_min = min(np.amin(casa_data), np.amin(wsc_data))
-    wc_max = max(np.amax(casa_data), np.amax(wsc_data))
-    ssim_wsc_casa = ssim(casa_data, wsc_data, data_range= wc_max - wc_min)
-    print(f"-I- ssim_wsc_casa = {ssim_wsc_casa:.3f}")
+    print(f"-D- max abs diff = {abs_max:.6e}")
 
     #sys.exit(0)
 
@@ -147,26 +684,90 @@ def plot_wsc_casa_bb(wsc_fits, wsc_log, casa_fits, casa_log, bb_grid, bb_data, b
     vmin, vmax = -max_absz, max_absz
     vmin, vmax = zmin, zmax
 
+    plot_grid = False
+    plot_circles = False
+
+    my_viridis = plt.cm.viridis
+    my_viridis.set_bad((1, 0, 0, 1))
+
+    """
+    for data in wsc_data, casa_data, bb_data:
+        for x in 0, 256, 511:
+            data[x, x] = np.nan
+    """
+    
+
     plt.subplot(231, projection=wcs, slices=('x', 'y', 0, 0))
-    plt.imshow(wsc_data, vmin=vmin, vmax=vmax)
-    plt.grid(color='white', ls='solid')
+    plt.imshow(wsc_data, vmin=vmin, vmax=vmax, cmap=my_viridis)
+    if plot_grid: plt.grid(color='white', ls='solid')
     plt.title('(a) WSClean', pad=14)
-    plt.gca().coords[0].set_axislabel(" ")
-    plt.gca().coords[0].set_ticklabel_visible(True)
-    plt.gca().coords[1].set_axislabel("Declination")
+    #plt.gca().coords[0].set_axislabel(" ")
+    #plt.gca().coords[0].set_ticklabel_visible(True)
+    #plt.gca().coords[1].set_axislabel("Declination")
+    #plt.gca().set_frame_on(False)
+    #plt.tick_params(axis='x', which='both', bottom=False, top=False,  labelbottom=False)
+    #plt.tick_params(axis='y', which='both', right=False,  left=False, labelleft=False)
+    #for pos in ['right', 'top', 'bottom', 'left']:
+    #    plt.gca().spines[pos].set_visible(False)
+    #plt.axis('off')
+
+    ax = plt.gca()
+    axins = ax.inset_axes([80, -40, 0.33, 0.33])#, transform = ax.transData)
+    axins.imshow(wsc_data)
+    axins.set_xlim(0.5, 1)
+    axins.set_ylim(0.5, 1)
+    ax.indicate_inset_zoom(axins, edgecolor="pink")
+    plt.savefig('abc123', bbox_inches='tight')
+    sys.exit(0)
+
+    print("=======================================================")
+    print(wcs.pixel_to_world(0, 0, 1, 1))
+    print("=======================================================")
+    """
+    ax = plt.gca()
+    # def add_point_sources()
+    with open(args.sky_file) as sky_file:
+        for src_line in sky_file:
+            id, ra, dec, px, py, intensity = src_line.strip().split(" ")
+            ra, dec, px, py = float(ra), float(dec), int(px), int(py)
+            print(id, ra, dec, px, py, intensity)
+            axins = ax.inset_axes([ra, dec, 0.5, 0.5])#, transform = ax.transData)
+            axins.imshow(wsc_data)
+            W = 10
+            x1, x2, y1, y2 = px - W, px + W, py - W, py + W
+            axins.set_xlim(x1, x2)
+            axins.set_ylim(y1, y2)
+            axins.set_xticklabels([])
+            axins.set_yticklabels([])
+            ax.indicate_inset_zoom(axins, edgecolor="pink")
+    """
+    """
+    # Create an inset axis in the bottom right corner
+    axins = plt.gca().inset_axes([0.6, 0.6, 0.1, 0.1])
+    axins.imshow(wsc_data)
+
+    # subregion of the original image
+    x1, x2, y1, y2 = 250, 262, 250, 262
+    axins.set_xlim(x1, x2)
+    axins.set_ylim(y1, y2)
+    axins.set_xticklabels([])
+    axins.set_yticklabels([])
+    plt.gca().indicate_inset_zoom(axins, edgecolor="black")
+    """
 
     plt.subplot(232, projection=wcs, slices=('x', 'y', 0, 0))
-    plt.imshow(casa_data, vmin=vmin, vmax=vmax)
-    plt.grid(color='white', ls='solid')
+    plt.imshow(casa_data, vmin=vmin, vmax=vmax, cmap=my_viridis)
+    if plot_grid: plt.grid(color='white', ls='solid')
     plt.title('(b) CASA', pad=14)
     plt.gca().coords[0].set_axislabel(" ")
     plt.gca().coords[0].set_ticklabel_visible(True)
     plt.gca().coords[1].set_axislabel(" ")
     plt.gca().coords[1].set_ticklabel_visible(True)
 
+    
     plt.subplot(233, projection=wcs, slices=('x', 'y', 0, 0))
-    plt.imshow(bb_data, vmin=vmin, vmax=vmax)
-    plt.grid(color='white', ls='solid')
+    plt.imshow(bb_data, vmin=vmin, vmax=vmax, cmap=my_viridis)
+    if plot_grid: plt.grid(color='white', ls='solid')
     plt.title('(c) Bluebild', pad=14)
     plt.gca().coords[0].set_axislabel(" ")
     plt.gca().coords[0].set_ticklabel_visible(True)
@@ -179,49 +780,50 @@ def plot_wsc_casa_bb(wsc_fits, wsc_log, casa_fits, casa_log, bb_grid, bb_data, b
 
     plt.subplot(234, projection=wcs, slices=('x', 'y', 0, 0))
     plt.imshow(diff_casa_wsc, vmin=-abs_max, vmax=abs_max, cmap='seismic')
-    plt.grid(color='gray', ls='solid')
+    if plot_grid: plt.grid(color='gray', ls='solid')
     plt.title('(d) CASA minus WSClean', pad=14)
     plt.gca().coords[0].set_axislabel("Right ascension")
     plt.gca().coords[1].set_axislabel("Declination")
-
     plt.gca().set_autoscale_on(False)
-
-    r1 = Circle((half_width_pix, half_width_pix), rad1_pix, edgecolor='darkorange', facecolor='none')
-    plt.gca().add_patch(r1)
-    r2 = Circle((half_width_pix, half_width_pix), rad2_pix, edgecolor='fuchsia', facecolor='none')
-    plt.gca().add_patch(r2)
-    r3 = Circle((half_width_pix, half_width_pix), rad3_pix, edgecolor='black', facecolor='none')
-    plt.gca().add_patch(r3)
+    if plot_circles:
+        r1 = Circle((half_width_pix, half_width_pix), rad1_pix, edgecolor='darkorange', facecolor='none')
+        plt.gca().add_patch(r1)
+        r2 = Circle((half_width_pix, half_width_pix), rad2_pix, edgecolor='fuchsia', facecolor='none')
+        plt.gca().add_patch(r2)
+        r3 = Circle((half_width_pix, half_width_pix), rad3_pix, edgecolor='black', facecolor='none')
+        plt.gca().add_patch(r3)
 
     plt.gca().set_autoscale_on(False)
     plt.subplot(235, projection=wcs, slices=('x', 'y', 0, 0))
     plt.imshow(diff_bb_casa, vmin=-abs_max, vmax=abs_max, cmap='seismic')
-    plt.grid(color='gray', ls='solid')
+    if plot_grid: plt.grid(color='gray', ls='solid')
     plt.title('(e) Bluebild minus CASA', pad=14)
     plt.gca().coords[0].set_axislabel("Right ascension")
     plt.gca().coords[1].set_axislabel(" ")
     plt.gca().coords[1].set_ticklabel_visible(True)
-    r1 = Circle((half_width_pix, half_width_pix), rad1_pix, edgecolor='darkorange', facecolor='none')
-    plt.gca().add_patch(r1)
-    r2 = Circle((half_width_pix, half_width_pix), rad2_pix, edgecolor='fuchsia', facecolor='none')
-    plt.gca().add_patch(r2)
-    r3 = Circle((half_width_pix, half_width_pix), rad3_pix, edgecolor='black', facecolor='none')
-    plt.gca().add_patch(r3)
+    if plot_circles:
+        r1 = Circle((half_width_pix, half_width_pix), rad1_pix, edgecolor='darkorange', facecolor='none')
+        plt.gca().add_patch(r1)
+        r2 = Circle((half_width_pix, half_width_pix), rad2_pix, edgecolor='fuchsia', facecolor='none')
+        plt.gca().add_patch(r2)
+        r3 = Circle((half_width_pix, half_width_pix), rad3_pix, edgecolor='black', facecolor='none')
+        plt.gca().add_patch(r3)
 
     plt.gca().set_autoscale_on(False)
     plt.subplot(236, projection=wcs, slices=('x', 'y', 0, 0))
     plt.imshow(diff_bb_wsc, vmin=-abs_max, vmax=abs_max, cmap='seismic')
-    plt.grid(color='gray', ls='solid')
+    if plot_grid: plt.grid(color='gray', ls='solid')
     plt.title('(f) Bluebild minus WSClean', pad=14)
     plt.gca().coords[0].set_axislabel("Right ascension")
     plt.gca().coords[1].set_axislabel(" ")
     plt.gca().coords[1].set_ticklabel_visible(True)
-    r1 = Circle((half_width_pix, half_width_pix), rad1_pix, edgecolor='darkorange', facecolor='none')
-    plt.gca().add_patch(r1)
-    r2 = Circle((half_width_pix, half_width_pix), rad2_pix, edgecolor='fuchsia', facecolor='none')
-    plt.gca().add_patch(r2)
-    r3 = Circle((half_width_pix, half_width_pix), rad3_pix, edgecolor='black', facecolor='none')
-    plt.gca().add_patch(r3)
+    if plot_circles:
+        r1 = Circle((half_width_pix, half_width_pix), rad1_pix, edgecolor='darkorange', facecolor='none')
+        plt.gca().add_patch(r1)
+        r2 = Circle((half_width_pix, half_width_pix), rad2_pix, edgecolor='fuchsia', facecolor='none')
+        plt.gca().add_patch(r2)
+        r3 = Circle((half_width_pix, half_width_pix), rad3_pix, edgecolor='black', facecolor='none')
+        plt.gca().add_patch(r3)
 
     cb_ax = fig.add_axes([0.92, 0.115, 0.012, 0.34])
     cbar = plt.colorbar(cax=cb_ax)
@@ -231,10 +833,14 @@ def plot_wsc_casa_bb(wsc_fits, wsc_log, casa_fits, casa_log, bb_grid, bb_data, b
     basename = os.path.join(outdir, outname)
     file_png  = basename + '.png'
     file_misc = basename + '.misc'
+    file_json = basename + '.json'
 
     plt.savefig(file_png, bbox_inches='tight')
     print("-I-", file_png)
 
+    casa_wsc_txt, casa_wsc_json = diff_stats_txt(casa_data, 'casa', wsc_data,  'wsc')
+    bb_wsc_txt,   bb_wsc_json   = diff_stats_txt(bb_data,   'bb',   wsc_data,  'wsc')
+    bb_casa_txt,  bb_casa_json  = diff_stats_txt(bb_data,   'bb',   casa_data, 'casa')
 
     with open(file_misc, 'w') as f:
         f.write("WSClean\n")
@@ -248,29 +854,118 @@ def plot_wsc_casa_bb(wsc_fits, wsc_log, casa_fits, casa_log, bb_grid, bb_data, b
         f.write(bb_info)
         f.write("\nCASA minus WSClean")
         f.write("-------------------------------------------------------------------\n")
-        f.write(diff_stats_txt(casa_data, wsc_data))
-        f.write(f"SSIM: {ssim_wsc_casa:.3f}\n")
+        f.write(casa_wsc_txt)
+        f.write(f"SSIM: {casa_wsc_json['casa-wsc']['ssim']:.3f}\n")
         f.write("\nBluebild minus WSClean")
         f.write("-------------------------------------------------------------------\n")
-        f.write(diff_stats_txt(bb_data, wsc_data))
-        f.write(f"SSIM: {ssim_bb_wsc:.3f}\n")
+        f.write(bb_wsc_txt)
+        f.write(f"SSIM: {bb_wsc_json['bb-wsc']['ssim']:.3f}\n")
         f.write("\nBluebild minus CASA")
         f.write("-------------------------------------------------------------------\n")
-        f.write(diff_stats_txt(bb_data, casa_data))
-        f.write(f"SSIM: {ssim_bb_casa:.3f}\n")
-
+        f.write(bb_casa_txt)
+        f.write(f"SSIM: {bb_casa_json['bb-casa']['ssim']:.3f}\n")
     print("-I-", file_misc)
 
-def diff_stats_txt(data1, data2):
+    with open(file_json, 'w') as f:
+        json.dump({'casa-wsc': casa_wsc_json,
+                   'bb-wsc':   bb_wsc_json,
+                   'bb_casa':  bb_casa_json}, f)
+    print("-I-", file_json)
+
+    #with open(file_json, 'r') as f:
+    #    chk = json.load(f)
+    #    print(chk)
+    #    print(chk['casa-wsc']['casa']['min'])
+
+
+def diff_stats_txt(data1, name1, data2, name2):
+
     diff_data = data1 - data2
-    txt  = f"diff min       = {np.amin(diff_data):.3f}\n"
-    txt += f"diff max       = {np.amax(diff_data):.3f}\n"
-    txt += f"diff rmse      = {rmse(data2, data1):.3f}\n"
-    txt += f"diff rmse 50%  = {rmse_sig(data2, data1, 0.50):.3f}\n"
-    txt += f"diff rmse 75%  = {rmse_sig(data2, data1, 0.75):.3f}\n"
-    txt += f"diff rmse 100% = {rmse_sig(data2, data1, 1.00):.3f}\n"
-    txt += f"diff rmse chk  = {rmse_sig(data2, data1, 1.415):.3f}\n"
-    return txt
+
+    # Compute structural similarity index (SSIM)
+    g_min = min(np.amin(data1), np.amin(data2))
+    g_max = max(np.amax(data1), np.amax(data2))
+    g_ssim  = ssim(data2, data1, data_range= g_max - g_min)
+    print(f"-I- SSIM {name1} - {name2}  = {g_ssim:.3f}")
+
+    """
+    bw_min = min(np.amin(wsc_data), np.amin(bb_data))
+    bw_max = max(np.amax(wsc_data), np.amax(bb_data))
+    ssim_bb_wsc  = ssim(wsc_data, bb_data, data_range= bw_max - bw_min)
+    print(f"-I- ssim_bb_wsc  = {ssim_bb_wsc:.3f}")
+    bc_min = min(np.amin(casa_data), np.amin(bb_data))
+    bc_max = max(np.amax(casa_data), np.amax(bb_data))
+    ssim_bb_casa = ssim(casa_data, bb_data, data_range= bc_max - bc_min)
+    print(f"-I- ssim_bb_casa = {ssim_bb_casa:.3f}")
+    wc_min = min(np.amin(casa_data), np.amin(wsc_data))
+    wc_max = max(np.amax(casa_data), np.amax(wsc_data))
+    ssim_wsc_casa = ssim(casa_data, wsc_data, data_range= wc_max - wc_min)
+    print(f"-I- ssim_wsc_casa = {ssim_wsc_casa:.3f}")
+    """
+
+
+    diff_min   = np.amin(diff_data)
+    diff_max   = np.amax(diff_data)
+    diff_range = diff_max - diff_min
+    rmse    = compute_rmse(data2, data1)
+    rmse50  = compute_rmse_sig(data2, data1, 0.50)
+    rmse75  = compute_rmse_sig(data2, data1, 0.75)
+    rmse100 = compute_rmse_sig(data2, data1, 1.00)
+    rmsechk = compute_rmse_sig(data2, data1, 1.415)
+    txt  = f"diff min       = {diff_min:.3e}\n"
+    txt += f"diff max       = {diff_max:.3e}\n"
+    txt += f"diff rmse      = {rmse:.3e}\n"
+    txt += f"diff rmse 50%  = {rmse50:.3e}\n"
+    txt += f"diff rmse 75%  = {rmse75:.3e}\n"
+    txt += f"diff rmse 100% = {rmse100:.3e}\n"
+    txt += f"diff rmse chk  = {rmsechk:.3e}\n"
+
+    sol_min = np.amin(data1)
+    sol_max = np.amax(data1)
+    sol_range = sol_max - sol_min
+    txt += f"solution min          = {sol_min:.3e}\n"
+    txt += f"solution max          = {sol_max:.3e}\n"
+    txt += f"solution range        = {sol_range:.3e}\n"
+
+    ref_min = np.amin(data2)
+    ref_max = np.amax(data2)
+    ref_range = ref_max - ref_min
+    txt += f"reference min         = {ref_min:.3e}\n"
+    txt += f"reference max         = {ref_max:.3e}\n"
+    txt += f"reference range       = {ref_range:.3e}\n"
+    
+    
+    txt += f"diff scaled rmse      = {rmse    / ref_range:.3e}\n"
+    txt += f"diff scaled rmse 50%  = {rmse50  / ref_range:.3e}\n"
+    txt += f"diff scaled rmse 75%  = {rmse75  / ref_range:.3e}\n"
+    txt += f"diff scaled rmse 100% = {rmse100 / ref_range:.3e}\n"
+    txt += f"diff scaled rmse chk  = {rmsechk / ref_range:.3e}\n"
+
+    name_diff = f"{name1}-{name2}"
+    data = {
+        name1 : {
+            'min': sol_min.item(), 'max': sol_max.item(), 'range': sol_range.item()
+        },
+        name2 : {
+            'min': ref_min.item(), 'max': ref_max.item(), 'range': ref_range.item()
+        },
+        name_diff : {
+            'min': diff_min.item(), 'max': diff_max.item(), 'range': diff_range.item(),
+            'rmse':    rmse.item(),
+            'rmse50':  rmse50.item(),
+            'rmse75':  rmse75.item(),
+            'rmse100': rmse100.item(),
+            'rmsechk': rmsechk.item(),
+            'scaled_rmse':    rmse.item()    / ref_range.item(),
+            'scaled_rmse50':  rmse50.item()  / ref_range.item(),
+            'scaled_rmse75':  rmse75.item()  / ref_range.item(),
+            'scaled_rmse100': rmse100.item() / ref_range.item(),
+            'scaled_rmsechk': rmsechk.item() / ref_range.item(),
+            'ssim': g_ssim.item()
+        }
+    }
+
+    return txt, data
 
 
 def plot_bluebild_casa(bipp_grid_npy, bipp_data_npy, bipp_json, fits_file, log_file, outname, outdir):
@@ -486,11 +1181,11 @@ def plot_fits_vs_fits(name1, fits1, info1, name2, fits2, info2, outdir, outname)
         f.write("-------------------------------------------------------------------\n")
         f.write(f"diff min = {np.amin(diff_data):.3f}\n")
         f.write(f"diff max = {np.amax(diff_data):.3f}\n")
-        f.write(f"diff rms = {rmse(data2, data1):.3f}\n")
-        f.write(f"diff rms 1s = {rmse_sig(data2, data1, 0.680):.3f}\n")
-        f.write(f"diff rms 2s = {rmse_sig(data2, data1, 0.950):.3f}\n")
-        f.write(f"diff rms 3s = {rmse_sig(data2, data1, 0.997):.3f}\n")
-        f.write(f"diff rms check = {rmse_sig(data2, data1, 1.415):.3f}\n")
+        f.write(f"diff rms = {compute_rmse(data2, data1):.3f}\n")
+        f.write(f"diff rms 1s = {compute_rmse_sig(data2, data1, 0.680):.3f}\n")
+        f.write(f"diff rms 2s = {compute_rmse_sig(data2, data1, 0.950):.3f}\n")
+        f.write(f"diff rms 3s = {compute_rmse_sig(data2, data1, 0.997):.3f}\n")
+        f.write(f"diff rms check = {compute_rmse_sig(data2, data1, 1.415):.3f}\n")
         f.write("-------------------------------------------------------------------\n")
 
     plt.tight_layout()
@@ -628,11 +1323,11 @@ def plot_fits_vs_fits_old(fits_file, bipp_data_npy, ref_txt_info, bipp_txt_info,
         f.write("-------------------------------------------------------------------\n")
         f.write(f"diff min = {np.amin(diff_data):.3f}\n")
         f.write(f"diff max = {np.amax(diff_data):.3f}\n")
-        f.write(f"diff rms = {rmse(bipp_data, ref_data):.3f}\n")
-        f.write(f"diff rms 1s = {rmse_sig(bipp_data, ref_data, 0.680):.3f}\n")
-        f.write(f"diff rms 2s = {rmse_sig(bipp_data, ref_data, 0.950):.3f}\n")
-        f.write(f"diff rms 3s = {rmse_sig(bipp_data, ref_data, 0.997):.3f}\n")
-        f.write(f"diff rms check = {rmse_sig(bipp_data, ref_data, 1.415):.3f}\n")
+        f.write(f"diff rms = {compute_rmse(bipp_data, ref_data):.3f}\n")
+        f.write(f"diff rms 1s = {compute_rmse_sig(bipp_data, ref_data, 0.680):.3f}\n")
+        f.write(f"diff rms 2s = {compute_rmse_sig(bipp_data, ref_data, 0.950):.3f}\n")
+        f.write(f"diff rms 3s = {compute_rmse_sig(bipp_data, ref_data, 0.997):.3f}\n")
+        f.write(f"diff rms check = {compute_rmse_sig(bipp_data, ref_data, 1.415):.3f}\n")
         f.write("-------------------------------------------------------------------\n")
 
     plt.tight_layout()
@@ -641,21 +1336,6 @@ def plot_fits_vs_fits_old(fits_file, bipp_data_npy, ref_txt_info, bipp_txt_info,
     print("-I-", file_png)
     print("-I-", file_misc)
 
-
-def rmse(y1, y2):
-    return np.linalg.norm(y1 - y2) / len(y1)
-
-def rmse_sig(y1, y2, sig):
-    assert(y1.shape == y2.shape)
-    assert(y1.shape[0] == y1.shape[1])
-    x = np.arange(0, y1.shape[0])
-    y = np.arange(0, y1.shape[0])
-    cxy = y1.shape[0] / 2 
-    R1 = y1.shape[0] / 2 * sig
-    mask = (x[np.newaxis,:]-cxy)**2 + (y[:,np.newaxis]-cxy)**2 > R1**2
-    diff = y1 - y2
-    diff[mask] = 0.0
-    return np.sqrt(np.sum(np.square(diff)) / y1.size)
 
 
 def plot_wsclean_casa_old(wsc_fits, wsc_log, casa_fits, casa_log):
@@ -1064,6 +1744,7 @@ if __name__ == "__main__":
     parser.add_argument('--outdir',    help='Plots output directory', required=True)
     parser.add_argument('--flip_lr',   help='Flip image left-rigth', action='store_true')
     parser.add_argument('--flip_ud',   help='Flip image up-down',    action='store_true')
+    parser.add_argument('--sky_file',  help='Simulated point sources RA and DEC')
     args = parser.parse_args()
 
     do_bb   = False
@@ -1084,7 +1765,6 @@ if __name__ == "__main__":
     print("-I- consider WSClean? ", do_wsc)
     print("-I- consider CASA?    ", do_casa)
         
-
 
     if do_bb and do_wsc and do_casa:
         plot_wsc_casa_bb(args.wsc_fits, args.wsc_log,
