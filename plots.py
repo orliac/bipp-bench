@@ -56,80 +56,18 @@ def get_bipp_info_from_json(bipp_json):
     return bipp_info
 
 
-def my_subplot_original():
-
-    """
-    for j in wsc_data.shape[1] / 2, :
-        for i in range(0, wsc_data.shape[0] - 1, 100):
-            sky0 = wcs.pixel_to_world(i,   j, 0, 0)[0]
-            sky1 = wcs.pixel_to_world(i+1, j, 0, 0)[0]
-            #print(sky0, sky1)
-            print(f"{i} {j} {(sky0.ra.deg - sky1.ra.deg) * 3600:.6f} [asec]")
-    """
-    
-
-    #extent = (1024, 0, 1024, 0)
-    #extent = (0, 1024, 0, 1024)
-
-    plt.subplot(111, projection=wcs, slices=('x', 'y', 0, 0))
-
-    #plt.imshow(wsc_data, extent=extent, vmin=-0.1, vmax=1.1,
-    plt.imshow(wsc_data, vmin=-0.1, vmax=1.1,
-               interpolation ="nearest")#, origin ="upper")
-    #plt.gca().invert_xaxis()
-
-    plt.gca().coords[0].set_ticks_position('b')
-    plt.gca().coords[1].set_ticks_position('l')
-    plt.gca().secondary_yaxis('right')
-    plt.gca().secondary_xaxis('top')
-
-    il = 0
-    with open(args.sky_file) as sky_file:
-        for src_line in sky_file:
-            if il%3 != 0:
-                il += 1
-                continue
-            id, ra, dec, px, py, intensity = src_line.strip().split(" ")
-            id, ra, dec, px, py, intensity = int(id), float(ra), float(dec), int(px), int(py), float(intensity)
-            #print(id, ra, dec, px, py, intensity)
-            sky = SkyCoord(ra=ra*u.degree, dec=dec*u.degree, frame='icrs')
-            pix = wcs.wcs_world2pix(sky.ra, sky.dec, 100000000.0, 1.0, 0)
-            print(f"{id:2d} ra = {sky.ra.deg:.4f} {sky.ra.to_string(u.hour)} {dec:.4f} {intensity:.1f} ==>  {pix[0]:.2f} {pix[1]:.2f}")
-
-            S = 100
-            axin = plt.gca().inset_axes([int(pix[0]) - 1.3*S, int(pix[1]) - S/2, S, S],
-                                        transform = plt.gca().transData)
-
-            #axin.imshow(wsc_data, extent=extent,vmin=-0.1, vmax=1.1,
-            axin.imshow(wsc_data, vmin=-0.1, vmax=1.1,
-                        interpolation ="nearest", origin ="lower")
-
-            # Box to highlight zoomed in region
-            x1, x2, y1, y2 = int(pix[0]) -8, int(pix[0]) +9, int(pix[1]) -8, int(pix[1]) + 9
-            axin.set_xlim(x1, x2)
-            axin.set_ylim(y1, y2)
-            axin.set_xticks([])
-            axin.set_yticks([])
-            plt.gca().indicate_inset_zoom(axin, edgecolor="black")
-
-            # Mark true position of source
-            axin.plot(pix[0], pix[1], '+', linewidth=0.1, markersize=.5, color='red')
-            
-            il += 1
-
-    plt.savefig('abc123', bbox_inches='tight', dpi=1400)
-    sys.exit(0)
-
-
-def my_subplot(plt, wcs, data, vmin, vmax, plot_grid, plot_circles, npix, cmap):
+def my_subplot(plt, wcs, data, vmin, vmax, plot_grid, plot_circles, npix, cmap,
+               sky_filepath, fh_sky_out, locate_max):
     
     plt.imshow(data, vmin=vmin, vmax=vmax, interpolation ="nearest", origin ="lower",
-                        extent=[0, npix, 0, npix], aspect=1, cmap=cmap)
+               aspect=1, cmap=cmap)
 
     plt.gca().coords[0].set_ticks_position('b')
     plt.gca().coords[1].set_ticks_position('l')
     plt.gca().secondary_yaxis('right')
     plt.gca().secondary_xaxis('top')
+
+    origin = 0
 
     if plot_grid:
         plt.grid(color='white', ls='solid')
@@ -144,7 +82,9 @@ def my_subplot(plt, wcs, data, vmin, vmax, plot_grid, plot_circles, npix, cmap):
 
 
     il = 0
-    with open(args.sky_file) as sky_file:
+    print(sky_filepath)
+    with open(sky_filepath) as sky_file:
+        src_a = []
         for src_line in sky_file:
             #if il%3 != 0:
             #    il += 1
@@ -153,8 +93,8 @@ def my_subplot(plt, wcs, data, vmin, vmax, plot_grid, plot_circles, npix, cmap):
             id, ra, dec, px, py, intensity = int(id), float(ra), float(dec), float(px), float(py), float(intensity)
             #print(id, ra, dec, px, py, intensity)
             sky = SkyCoord(ra=ra*u.degree, dec=dec*u.degree, frame='icrs')
-            pix = wcs.wcs_world2pix(sky.ra, sky.dec, 100000000.0, 1.0, 0)
-            print(f"{id:2d} (!{px}, {py}!) ra = {sky.ra.deg:.4f} {sky.ra.to_string(u.hour)} {dec:.4f} {intensity:.1f} ==>  {pix[0]:.2f} {pix[1]:.2f}")
+            pix = wcs.wcs_world2pix(sky.ra, sky.dec, 100000000.0, 1.0, origin)
+            print(f"{id:2d} (!{px}, {py}!) ra = {sky.ra.deg:.4f} {sky.ra.to_string(u.hour)} {dec:.4f} {intensity:.1f} ==>  {pix[0]:.2f} {pix[1]:.2f} in Python imshow / {pix[0] + 1:.2f} {pix[1] + 1:.2f} in .fits")
 
             S = int(npix * 0.20)
             offset = 0
@@ -166,14 +106,15 @@ def my_subplot(plt, wcs, data, vmin, vmax, plot_grid, plot_circles, npix, cmap):
                                         transform = plt.gca().transData)
 
             test = axin.imshow(data, vmin=vmin, vmax=vmax, interpolation ="nearest", origin ="lower",
-                               extent=[0, npix, 0, npix], aspect=1, cmap=cmap)
+                               aspect=1, cmap=cmap)
 
             # Box to highlight zoomed in region
-            x_ref = int(pix[0])
-            y_ref = int(pix[1])
-            lhw   = 6
-            rhw   = lhw + 1
+            x_ref = pix[0]
+            y_ref = pix[1]
+            lhw   = 4.5  
+            rhw   = lhw + 0
             x1, x2, y1, y2 = x_ref - lhw, x_ref + rhw, y_ref - lhw, y_ref + rhw
+            #print(f"box: {x1}->{x2}, {y1}->{y2}")
             axin.set_xlim(x1, x2)
             axin.set_ylim(y1, y2)
             axin.set_xticks([])
@@ -181,115 +122,68 @@ def my_subplot(plt, wcs, data, vmin, vmax, plot_grid, plot_circles, npix, cmap):
             plt.gca().indicate_inset_zoom(axin, edgecolor="black")
 
             # Mark true position of source
-            axin.plot(pix[0], pix[1], '+', linewidth=0.05, markersize=7, color='fuchsia')
+            axin.plot(pix[0], pix[1], '+', linewidth=0.05, markersize=5, color='fuchsia')
             
             # Find pixel of highest intensity in zoomed in region
-
-            i_max = -1E10
-            x_max, y_max = -1, -1
-            for x in range(x1, x2+1):
-                for y in range(y1, y2+1):
-                    #axin.plot(x, y, '*', linewidth=0.05, markersize=4, color='fuchsia')
-                    if data[y][x] > i_max: #!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!! INDICES INVERTED !!!! TBC
-                        x_max, y_max, i_max = x, y, data[y][x]
-            #print(f" .. max found on pixel {x_max}, {y_max} with intensity {data[x_max][y_max]}")
-            axin.plot(x_max + 0.5, y_max + 0.5, 'x', linewidth=0.05, markersize=4, color='black')
-            il += 1
-            break
-
-
-def my_subplot_no_proj(plt, wcs, data, vmin, vmax, plot_grid, plot_circles, npix, cmap):
-    
-    plt.imshow(data, vmin=vmin, vmax=vmax, interpolation ="nearest", origin ="lower",
-                        extent=[0, npix, 0, npix], aspect=1, cmap=cmap)
-
-    print(data.flags)
-    return
-
-    """
-    plt.gca().coords[0].set_ticks_position('b')
-    plt.gca().coords[1].set_ticks_position('l')
-    plt.gca().secondary_yaxis('right')
-    plt.gca().secondary_xaxis('top')
-
-    if plot_grid:
-        plt.grid(color='white', ls='solid')
-
-    if plot_circles:
-        r1 = Circle((half_width_pix, half_width_pix), rad1_pix, edgecolor='darkorange', facecolor='none')
-        plt.gca().add_patch(r1)
-        r2 = Circle((half_width_pix, half_width_pix), rad2_pix, edgecolor='fuchsia', facecolor='none')
-        plt.gca().add_patch(r2)
-        r3 = Circle((half_width_pix, half_width_pix), rad3_pix, edgecolor='black', facecolor='none')
-        plt.gca().add_patch(r3)
-    """
-
-    il = 0
-    with open(args.sky_file) as sky_file:
-        for src_line in sky_file:
-            #if il%3 != 0:
-            #    il += 1
-            #    continue
-            id, ra, dec, px, py, intensity = src_line.strip().split(" ")
-            id, ra, dec, px, py, intensity = int(id), float(ra), float(dec), int(px), int(py), float(intensity)
-            #print(id, ra, dec, px, py, intensity)
-            sky = SkyCoord(ra=ra*u.degree, dec=dec*u.degree, frame='icrs')
-            pix = wcs.wcs_world2pix(sky.ra, sky.dec, 100000000.0, 1.0, 0)
-            print(f"{id:2d} (!{px}, {py}!) ra = {sky.ra.deg:.4f} {sky.ra.to_string(u.hour)} {dec:.4f} {intensity:.1f} ==>  {pix[0]:.2f} {pix[1]:.2f}")
-            print("pix=", pix)
-
-            S = int(npix * 0.20)
-            offset = 0
-            if int(pix[1] + S/2) > npix:
-                offset = npix - int(pix[1] + S/2) - int(npix * 0.01)
-            if int(pix[1] - S/2) < 0:
-                offset = 0 - int(pix[1] - S/2) + int(npix * 0.01)
-
-            axin = plt.gca().inset_axes([int(pix[0] + npix * 0.02), int(pix[1]) - int(S/2 - offset), S, S],
-                                        transform = plt.gca().transData)
+            if locate_max:
+                i_max = -1E10
+                x_max, y_max = -1, -1
+                for x in range(int(x1-0.5), int(x2+0.5)):
+                    for y in range(int(y1-0.5), int(y2+0.5)):
+                        # TODO: understand why this is so... 
+                        # !!! INDICES INVERTED !!!! mem layout?
+                        if data[y][x] > i_max: 
+                            x_max, y_max, i_max = x, y, data[y][x]
+                axin.plot(x_max, y_max, 'x', linewidth=0.05, markersize=5, color='black')
             
-            axin.imshow(data, vmin=vmin, vmax=vmax, interpolation ="nearest", origin ="lower",
-                        extent=[0, npix, 0, npix], aspect=1, cmap=cmap)
+                # Compute distance to true source in pixels
+                dist_x = x_max - pix[0]
+                dist_y = y_max - pix[1]
+                dist = np.sqrt(dist_x * dist_x + dist_y * dist_y)
+                print(f" .. max found on pixel {x_max}, {y_max} with intensity {data[y_max][x_max]}, dist to true position = {dist:.2f} [pix]")
+                json_src = {
+                    'simulated': {
+                        'ra.deg':  f"{sky.ra.deg:.8f}",
+                        'ra.hms':  sky.ra.to_string(u.hour),
+                        'dec.deg': f"{sky.dec.deg:.8f}",
+                        'deg.hms': sky.dec.to_string(u.hour),
+                        'px': px,
+                        'py': py,
+                        'intensity': float(intensity),
+                    },
+                    'recovered': {
+                        'dist.x': dist_x,
+                        'dist.y': dist_y,
+                        'dist': dist,
+                        'px': x_max,
+                        'py': y_max,
+                        'intensity': float(data[y_max][x_max])
+                    }
+                }
+                src_a.append(json_src)
+                il += 1
+                #break
 
-            # Box to highlight zoomed in region
-            x_ref = int(pix[0])
-            y_ref = int(pix[1])
-            lhw   = 6
-            rhw   = lhw + 1
-            x1, x2, y1, y2 = x_ref - lhw, x_ref + rhw, y_ref - lhw, y_ref + rhw
-            axin.set_xlim(x1, x2)
-            axin.set_ylim(y1, y2)
-            axin.set_xticks([])
-            axin.set_yticks([])
-            plt.gca().indicate_inset_zoom(axin, edgecolor="black")
-
-            # Mark true position of source
-            axin.plot(pix[0], pix[1], '+', linewidth=0.05, markersize=7, color='fuchsia')
-            
-            # Find pixel of highest intensity in zoomed in region
-
-            i_max = -1E10
-            x_max, y_max = -1, -1
-            for x in range(x1, x2+1):
-                for y in range(y1, y2+1):
-                    #axin.plot(x, y, '*', linewidth=0.05, markersize=4, color='fuchsia')
-                    #print(f"{x}, {y} => {data[y][x]}")
-                    if data[y][x] > i_max:
-                        x_max, y_max, i_max = x, y, data[y][x]
-                        
-            print(f" .. max found on pixel {x_max}, {y_max} with intensity {data[x_max][y_max]}")
-            axin.plot(x_max, y_max, 'c', linewidth=0.05, markersize=4, color='black')
-            il += 1
-            break
+        if fh_sky_out:
+            json_obj = json.dumps({'sources': src_a}, indent=4)
+            fh_sky_out.write(json_obj)
 
 
 def plot_wsc_casa_bb(wsc_fits, wsc_log, casa_fits, casa_log, bb_grid, bb_data, bb_json,
-                     outdir, outname):
+                     outdir, outname, sky_file):
 
-    bb_ori = np.sum(np.load(bb_data).transpose(1,2,0), axis=2)
-    print(bb_ori.shape)
-
+    # Define output files
     outname += f"_wsc_casa_bb"
+    basename = os.path.join(outdir, outname)
+    file_png  = basename + '.png'
+    file_misc = basename + '.misc'
+    file_json = basename + '.json'
+    fh_sky_out = None
+    if sky_file:
+        print("Simulated point sources file dectected:", sky_file)
+        sky_out = basename + '.sky'
+        print(" => sky_out:", sky_out)
+        fh_sky_out = open(sky_out, "w")
 
     bb_info = get_bipp_info_from_json(bb_json)
 
@@ -391,29 +285,21 @@ def plot_wsc_casa_bb(wsc_fits, wsc_log, casa_fits, casa_log, bb_grid, bb_data, b
     my_viridis = plt.cm.viridis
     my_viridis.set_bad((1, 0, 0, 1))
 
+    locate_max = True
+
     ### CASA
     plt.subplot(231, projection=wcs, slices=('x', 'y', 0, 0))
-    my_subplot(plt, wcs, casa_data, vmin, vmax, plot_grid, plot_circles, npix, 'viridis')
+    my_subplot(plt, wcs, casa_data, vmin, vmax, plot_grid, plot_circles, npix, 'viridis',
+               sky_file, fh_sky_out, locate_max)
+    plt.title('(a) CASA', pad=14)
     plt.gca().coords[0].set_axislabel(" ")
     plt.gca().coords[0].set_ticklabel_visible(True)
     plt.gca().coords[1].set_axislabel("Declination")
 
-    """
-    plt.subplot(231)
-    print(type(casa_data))
-    print(casa_data)
-    my_subplot_no_proj(plt, wcs, wsc_data, vmin, vmax, plot_grid, plot_circles, npix, 'viridis')
-    plt.title('(a) WSClean', pad=14)
-    plt.subplot(234)
-    print(type(bb_ori))
-    print(bb_ori)
-    my_subplot_no_proj(plt, wcs, bb_ori, vmin, vmax, plot_grid, plot_circles, npix, 'viridis')
-    plt.title('(a) Bluebild', pad=14)
-    """
-    """
     ### WSClean
     plt.subplot(232, projection=wcs, slices=('x', 'y', 0, 0))
-    my_subplot(plt, wcs, wsc_data, vmin, vmax, plot_grid, plot_circles, npix, 'viridis')
+    my_subplot(plt, wcs, wsc_data, vmin, vmax, plot_grid, plot_circles, npix, 'viridis',
+               sky_file, fh_sky_out, locate_max)
     plt.title('(b) WSClean', pad=14)
     plt.gca().coords[0].set_axislabel(" ")
     plt.gca().coords[0].set_ticklabel_visible(True)
@@ -422,34 +308,39 @@ def plot_wsc_casa_bb(wsc_fits, wsc_log, casa_fits, casa_log, bb_grid, bb_data, b
 
     ### Bluebild
     plt.subplot(233, projection=wcs, slices=('x', 'y', 0, 0))
-    my_subplot(plt, wcs, bb_data, vmin, vmax, plot_grid, plot_circles, npix, 'viridis')
+    my_subplot(plt, wcs, bb_data, vmin, vmax, plot_grid, plot_circles, npix, 'viridis',
+               sky_file, fh_sky_out, locate_max)
     plt.title('(c) Bluebild', pad=14)
     plt.gca().coords[0].set_axislabel(" ")
     plt.gca().coords[0].set_ticklabel_visible(True)
     plt.gca().coords[1].set_axislabel(" ")
     plt.gca().coords[1].set_ticklabel_visible(True)
-    """
+
     cb_ax = fig.add_axes([0.92, 0.535, 0.012, 0.34])
     cbar = plt.colorbar(cax=cb_ax)
     cbar.ax.tick_params(size=0)
 
+    if fh_sky_out:
+        fh_sky_out.close()
 
     ### Diff plots
     
     plot_grid = False
     plot_circles = False
+    locate_max = False
 
     plt.subplot(234, projection=wcs, slices=('x', 'y', 0, 0))
-    my_subplot(plt, wcs, diff_casa_wsc, -abs_max, abs_max, plot_grid, plot_circles, npix, 'seismic')
+    my_subplot(plt, wcs, diff_casa_wsc, -abs_max, abs_max, plot_grid, plot_circles, npix, 'seismic',
+               sky_file, None, locate_max)
     plt.title('(d) CASA minus WSClean', pad=14)
     plt.gca().coords[0].set_axislabel("Right ascension")
     plt.gca().coords[1].set_axislabel("Declination")
     plt.gca().set_autoscale_on(False)
 
-    """
     plt.gca().set_autoscale_on(False)
     plt.subplot(235, projection=wcs, slices=('x', 'y', 0, 0))
-    my_subplot(plt, wcs, diff_bb_casa, -abs_max, abs_max, plot_grid, plot_circles, npix, 'seismic')
+    my_subplot(plt, wcs, diff_bb_casa, -abs_max, abs_max, plot_grid, plot_circles, npix, 'seismic',
+               sky_file, None, locate_max)
     plt.title('(e) Bluebild minus CASA', pad=14)
     plt.gca().coords[0].set_axislabel("Right ascension")
     plt.gca().coords[1].set_axislabel(" ")
@@ -457,23 +348,16 @@ def plot_wsc_casa_bb(wsc_fits, wsc_log, casa_fits, casa_log, bb_grid, bb_data, b
 
     plt.gca().set_autoscale_on(False)
     plt.subplot(236, projection=wcs, slices=('x', 'y', 0, 0))
-    my_subplot(plt, wcs, diff_bb_wsc, -abs_max, abs_max, plot_grid, plot_circles, npix, 'seismic')
+    my_subplot(plt, wcs, diff_bb_wsc, -abs_max, abs_max, plot_grid, plot_circles, npix, 'seismic',
+               sky_file, None, locate_max)
     plt.title('(f) Bluebild minus WSClean', pad=14)
     plt.gca().coords[0].set_axislabel("Right ascension")
     plt.gca().coords[1].set_axislabel(" ")
     plt.gca().coords[1].set_ticklabel_visible(True)
-    """
 
     cb_ax = fig.add_axes([0.92, 0.115, 0.012, 0.34])
     cbar = plt.colorbar(cax=cb_ax)
     cbar.ax.tick_params(size=0)
-
-
-    # Write .png and associated .misc file
-    basename = os.path.join(outdir, outname)
-    file_png  = basename + '.png'
-    file_misc = basename + '.misc'
-    file_json = basename + '.json'
 
     plt.savefig(file_png, bbox_inches='tight', dpi=1400)
     print("-I-", file_png)
@@ -1747,6 +1631,9 @@ if __name__ == "__main__":
     parser.add_argument('--sky_file',  help='Simulated point sources RA and DEC')
     args = parser.parse_args()
 
+    # Handle non-mandatory sky file (typically OSKAR simulated point sources)
+    sky_file = args.sky_file if args.sky_file else None
+
     do_bb   = False
     do_wsc  = False
     do_casa = False
@@ -1770,7 +1657,7 @@ if __name__ == "__main__":
         plot_wsc_casa_bb(args.wsc_fits, args.wsc_log,
                          args.casa_fits, args.casa_log,
                          args.bb_grid, args.bb_data, args.bb_json,
-                         args.outdir, args.outname)
+                         args.outdir, args.outname, sky_file)
 
     print("-W- Ignore 1 to 1 plots")
     sys.exit(0)
