@@ -8,11 +8,16 @@ fi
 #export OPEN_BLAS_NUM_THREADS=1
 echo "-I- OMP_NUM_THREADS = ${OMP_NUM_THREADS}"
 
-RUN_OSKAR=0
-RUN_CASA=0
-RUN_WSCLEAN=0
-RUN_BIPP=0
+RUN_OSKAR=1
+RUN_CASA=1
+RUN_WSCLEAN=1
+RUN_BIPP=1
 RUN_BIPP_PLOT=1
+
+PLOT_ONLY=0
+if [[ $PLOT_ONLY == 1 ]]; then
+    RUN_OSKAR=0; RUN_CASA=0; RUN_WSCLEAN=0; RUN_BIPP=0;
+fi
 
 INSTALL_BIPP=0
 INSTALL_PYPELINE=0
@@ -46,15 +51,15 @@ MS_BASENAME=${MS_BASENAME_}.ms
 TELESCOPE="SKALOW"
 
 TIME_START_IDX=0
-TIME_END_IDX=1
+TIME_END_IDX=600
 TIME_SLICE_PE=1
 TIME_SLICE_IM=1
 TIME_TAG=${TIME_START_IDX}-${TIME_END_IDX}-${TIME_SLICE_PE}-${TIME_SLICE_IM}
 
 #WSC_SIZE=8192
 #WSC_SIZE=4096
-#WSC_SIZE=2048
-WSC_SIZE=1024
+WSC_SIZE=2048
+#WSC_SIZE=1024
 #WSC_SIZE=512
 #WSC_SIZE=256
 #WSC_SIZE=128
@@ -67,18 +72,22 @@ FOV_DEG=7
 
 source ~/SKA/ska-spack-env/${SPACK_SKA_ENV}/activate.sh
 source $VENV/bin/activate
+
 WSC_SCALE=$(python get_scale.py --pixw $WSC_SIZE --fov $FOV_DEG --unit deg)
 
 WSC_SCALE=4
 FOV_DEG=$(python get_fov_deg.py --size $WSC_SIZE --scale $WSC_SCALE)
 
-deactivate 
-source ~/SKA/ska-spack-env/${SPACK_SKA_ENV}/deactivate.sh
-
-
 ### Run OSKAR to produce a MS dataset
 if [[ $RUN_OSKAR == 1 ]]; then
     ROOT_OSKAR=/home/orliac/SKA/oskar/OSKAR-2.8.3
+    export OSKAR_INC_DIR=${ROOT_OSKAR}/inst/include
+    export OSKAR_LIB_DIR=${ROOT_OSKAR}/inst/lib
+
+    # Run to install the Python interface
+    python -m pip install 'git+https://github.com/OxfordSKA/OSKAR.git@master#egg=oskarpy&subdirectory=python'
+    python -m pip list
+    
     [ ! -d $IN_DIR ] && mkdir -pv $IN_DIR
 
     INPUT_DIRECTORY="ska1low_new.tm"
@@ -93,19 +102,15 @@ if [[ $RUN_OSKAR == 1 ]]; then
     cp $OSKAR_SIM $IN_DIR
 
     cd $IN_DIR
-    singularity exec --bind /work ${ROOT_OSKAR}/../oskar.sif \
-        /usr/bin/python3 $IN_DIR/oskar_sim.py \
-        --wsc_size $WSC_SIZE \
-        --fov_deg $FOV_DEG \
-        --num_time_steps $TIME_END_IDX \
-        --input_directory $INPUT_DIRECTORY \
-        --telescope_lon ${posarr[0]} \
-        --telescope_lat ${posarr[1]}
+    python3 $IN_DIR/oskar_sim.py \
+            --wsc_size $WSC_SIZE \
+            --fov_deg $FOV_DEG \
+            --num_time_steps $TIME_END_IDX \
+            --input_directory $INPUT_DIRECTORY \
+            --telescope_lon ${posarr[0]} \
+            --telescope_lat ${posarr[1]}
     cd -
 fi
-
-source ~/SKA/ska-spack-env/${SPACK_SKA_ENV}/activate.sh
-source $VENV/bin/activate
 
 MS_FILE=${IN_DIR}/${MS_BASENAME}
 [ -d $MS_FILE ] || (echo "-E- MS dataset $MS_FILE not found" && exit 1)
@@ -127,6 +132,10 @@ WSCLEAN_LOG=${OUT_DIR}/${MS_BASENAME}-dirty_wsclean.log
 CASA_OUT=${OUT_DIR}/${MS_BASENAME}-dirty_casa
 CASA_LOG=${OUT_DIR}/${MS_BASENAME}-dirty_casa.log
 
+spack env status
+which python
+python -V
+
 
 if [[ $RUN_CASA == 1 ]]; then
 
@@ -141,6 +150,11 @@ if [[ $RUN_CASA == 1 ]]; then
         --time_file ${TIME_FILE}
     #cat ${TIME_FILE}
 
+    spack env status
+    which python
+    python -V
+
+    
     casa_start=$(sed -n '1p' ${TIME_FILE})
     casa_end=$(sed -n '2p' ${TIME_FILE})
     CASA_TIMERANGE="${casa_start}~${casa_end}"
