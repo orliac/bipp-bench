@@ -101,64 +101,30 @@ fn = os.path.splitext(fn)[0] + '.sky'
 f = open(fn, "w")
 i = 0
 sky_data = []
+origin = 0
 
 eighths = (1, 4, 7)
 for i in eighths:
     assert(((size / 8) * i) % 2 == 0)
     for j in eighths:
-        x = i * size / 8 + 0.5
-        y = j * size / 8 + 0.5
-        sky = w.wcs_pix2world([[x, y]], 1)[0]
+        x = i * size / 8 #+ 0.5
+        y = j * size / 8 #+ 0.5
+        sky = w.wcs_pix2world([[x, y]], origin)[0]
         ra, dec = sky[0], sky[1]
-        intensity = 1.0 + i/10
+        intensity = 1.0 #+ i/10
         print(f"{i} {x} {y} {ra:.8f} {dec:.8f}")
         sky_data.append([ra, dec, intensity])
         f.write(f"{i} {ra:.8f} {dec:.8f} {x} {y} {intensity:.3f}\n")
 f.close
 
-#world = w.wcs_pix2world([[512, 512]], 0)
-#print(world)
+# Check point
+world = w.wcs_pix2world([[0, 0]], 0)
+print("Check point [0, 0] pix =>", world)
 
-"""
-# Create a sky model containing a grid of point sources separated by INC
-# and centered on pix 1,1 from FoV center
-SCALE_DEG = args.fov_deg / args.wsc_size
-print(f"-O- scale = {SCALE_DEG:.6f} [deg], {SCALE_DEG * 3600:.6f} [arcsec]")
-HALF_SCALE_DEG = SCALE_DEG / 2
-print("HALF_SCALE_DEG =", HALF_SCALE_DEG,  HALF_SCALE_DEG * 3600)
-inc_deg = 0.5
-assert(args.wsc_size % 2 == 0)
-i_range = int((args.fov_deg / 2) / inc_deg)
-print(args.fov_deg, i_range)
-INTENSITY = 1.0
-sky_data = []
-fn = params["interferometer"]["ms_filename"]
-fn = os.path.splitext(fn)[0] + '.sky'
-f = open(fn, "w")
-i = 0
-for ra in numpy.arange(-i_range * inc_deg, (i_range + 1) * inc_deg, inc_deg):
-    for dec in numpy.arange(-i_range * inc_deg, (i_range + 1) * inc_deg, inc_deg):
-        intensity = 1 + i/10
-        print(ra, dec, intensity)
-        ra_  = RA  + ra  + HALF_SCALE_DEG * 1
-        dec_ = DEC + dec + HALF_SCALE_DEG * 1
-        sky_data.append([ra_, dec_, intensity])
-        pix_i = int((ra_  - RA)  / SCALE_DEG + numpy.sign(ra_ - RA)   * 1)
-        pix_j = int((dec_ - DEC) / SCALE_DEG + numpy.sign(dec_ - DEC) * 1)
-        print(f"-O- Added source at ra, dec = {ra_:.8f}, {dec_:.8f}. Pixel {pix_i}, {pix_j}")
-
-        pix_i = int(args.wsc_size / 2 + (ra_  - RA)  / SCALE_DEG + numpy.sign(ra_ - RA)   * 0)
-        pix_j = int(args.wsc_size / 2 + (dec_ - DEC) / SCALE_DEG + numpy.sign(dec_ - DEC) * 0)
-        print(f"-O- Added source at ra, dec = {ra_:.8f}, {dec_:.8f}. Pixel {pix_i}, {pix_j}")
-        f.write(f"{i} {ra_:.8f} {dec_:.8f} {pix_i} {pix_j} {intensity:.1f}\n")
-        i += 1
-f.close
-"""
-
-sky_data = numpy.array(sky_data)
-sky = oskar.Sky.from_array(sky_data, precision)  # Pass precision here.
 
 # Set the sky model and run the simulation.
+sky_data = numpy.array(sky_data)
+sky = oskar.Sky.from_array(sky_data, precision)  # Pass precision here.
 sim = oskar.Interferometer(settings=settings)
 sim.set_sky_model(sky)
 sim.run()
