@@ -57,16 +57,19 @@ def get_bipp_info_from_json(bipp_json):
 
 
 def my_subplot(plt, wcs, data, vmin, vmax, plot_grid, plot_circles, npix, cmap,
-               sky_filepath, fh_sky_out, locate_max):
+               sky_filepath, fh_sky_out, locate_max, wsc_size, wsc_scale, solution=None):
     
     plt.imshow(data, vmin=vmin, vmax=vmax, interpolation ="nearest", origin ="lower",
                aspect=1, cmap=cmap)
 
+    # To add a second axis labelling with pixel scale
+    """
     plt.gca().coords[0].set_ticks_position('b')
     plt.gca().coords[1].set_ticks_position('l')
     plt.gca().secondary_yaxis('right')
     plt.gca().secondary_xaxis('top')
-
+    """
+    
     origin = 0
 
     if plot_grid:
@@ -80,7 +83,11 @@ def my_subplot(plt, wcs, data, vmin, vmax, plot_grid, plot_circles, npix, cmap,
         r3 = Circle((half_width_pix, half_width_pix), rad3_pix, edgecolor='black', facecolor='none')
         plt.gca().add_patch(r3)
 
-
+    npix = data.shape[0]
+    assert(npix == wsc_size)
+    opix = int(npix * 0.015)
+    plt.gca().text(opix, opix, f"size: {npix} x {npix} pix, ang. res: {wsc_scale:.3f} asec", fontsize=4, rotation='vertical', color='lime')
+        
     il = 0
     print(sky_filepath)
     with open(sky_filepath) as sky_file:
@@ -162,15 +169,20 @@ def my_subplot(plt, wcs, data, vmin, vmax, plot_grid, plot_circles, npix, cmap,
                 }
                 src_a.append(json_src)
                 il += 1
-                #break
+                
+            #if il > 3: break
 
-        if fh_sky_out:
-            json_obj = json.dumps({'sources': src_a}, indent=4)
-            fh_sky_out.write(json_obj)
+        # Print info on resolution on the picture
+        
+        
+        #if fh_sky_out:
+        #    json_obj = json.dumps({solution: src_a}, indent=4)
+        #    fh_sky_out.write(json_obj)
+        return src_a
 
 
 def plot_wsc_casa_bb(wsc_fits, wsc_log, casa_fits, casa_log, bb_grid, bb_data, bb_json,
-                     outdir, outname, sky_file):
+                     outdir, outname, sky_file, wsc_size, wsc_scale):
 
     # Define output files
     outname += f"_wsc_casa_bb"
@@ -289,8 +301,8 @@ def plot_wsc_casa_bb(wsc_fits, wsc_log, casa_fits, casa_log, bb_grid, bb_data, b
 
     ### CASA
     plt.subplot(231, projection=wcs, slices=('x', 'y', 0, 0))
-    my_subplot(plt, wcs, casa_data, vmin, vmax, plot_grid, plot_circles, npix, 'viridis',
-               sky_file, fh_sky_out, locate_max)
+    casa_sky = my_subplot(plt, wcs, casa_data, vmin, vmax, plot_grid, plot_circles, npix, 'viridis',
+                          sky_file, fh_sky_out, locate_max, wsc_size, wsc_scale, solution='CASA')
     plt.title('(a) CASA', pad=14)
     plt.gca().coords[0].set_axislabel(" ")
     plt.gca().coords[0].set_ticklabel_visible(True)
@@ -298,29 +310,38 @@ def plot_wsc_casa_bb(wsc_fits, wsc_log, casa_fits, casa_log, bb_grid, bb_data, b
 
     ### WSClean
     plt.subplot(232, projection=wcs, slices=('x', 'y', 0, 0))
-    my_subplot(plt, wcs, wsc_data, vmin, vmax, plot_grid, plot_circles, npix, 'viridis',
-               sky_file, fh_sky_out, locate_max)
+    wsc_sky = my_subplot(plt, wcs, wsc_data, vmin, vmax, plot_grid, plot_circles, npix, 'viridis',
+                         sky_file, fh_sky_out, locate_max, wsc_size, wsc_scale, solution='WSClean')
     plt.title('(b) WSClean', pad=14)
     plt.gca().coords[0].set_axislabel(" ")
     plt.gca().coords[0].set_ticklabel_visible(True)
     plt.gca().coords[1].set_axislabel(" ")
-    plt.gca().coords[1].set_ticklabel_visible(True)
+    plt.gca().coords[1].set_ticklabel_visible(False)
 
     ### Bluebild
     plt.subplot(233, projection=wcs, slices=('x', 'y', 0, 0))
-    my_subplot(plt, wcs, bb_data, vmin, vmax, plot_grid, plot_circles, npix, 'viridis',
-               sky_file, fh_sky_out, locate_max)
+    bb_sky = my_subplot(plt, wcs, bb_data, vmin, vmax, plot_grid, plot_circles, npix, 'viridis',
+                        sky_file, fh_sky_out, locate_max, wsc_size, wsc_scale, solution='Bluebild')
     plt.title('(c) Bluebild', pad=14)
     plt.gca().coords[0].set_axislabel(" ")
     plt.gca().coords[0].set_ticklabel_visible(True)
     plt.gca().coords[1].set_axislabel(" ")
-    plt.gca().coords[1].set_ticklabel_visible(True)
-
-    cb_ax = fig.add_axes([0.92, 0.535, 0.012, 0.34])
+    plt.gca().coords[1].set_ticklabel_visible(False)
+    
+    cb_ax = fig.add_axes([0.94, 0.535, 0.012, 0.34])
     cbar = plt.colorbar(cax=cb_ax)
     cbar.ax.tick_params(size=0)
+    cbar.set_label("Intensity [Jy/beam]")
 
+    ref_pix = int(wsc_size / 2)
+    assert(ref_pix * 2 == wsc_size)
+    
     if fh_sky_out:
+        json_obj = json.dumps({'CASA':     casa_sky,
+                               'WSClean':  wsc_sky,
+                               'Bluebild': bb_sky,
+                               'ref_pix': ref_pix},  indent=4)
+        fh_sky_out.write(json_obj)
         fh_sky_out.close()
 
     ### Diff plots
@@ -331,7 +352,7 @@ def plot_wsc_casa_bb(wsc_fits, wsc_log, casa_fits, casa_log, bb_grid, bb_data, b
 
     plt.subplot(234, projection=wcs, slices=('x', 'y', 0, 0))
     my_subplot(plt, wcs, diff_casa_wsc, -abs_max, abs_max, plot_grid, plot_circles, npix, 'seismic',
-               sky_file, None, locate_max)
+               sky_file, None, locate_max, wsc_size, wsc_scale)
     plt.title('(d) CASA minus WSClean', pad=14)
     plt.gca().coords[0].set_axislabel("Right ascension")
     plt.gca().coords[1].set_axislabel("Declination")
@@ -340,25 +361,26 @@ def plot_wsc_casa_bb(wsc_fits, wsc_log, casa_fits, casa_log, bb_grid, bb_data, b
     plt.gca().set_autoscale_on(False)
     plt.subplot(235, projection=wcs, slices=('x', 'y', 0, 0))
     my_subplot(plt, wcs, diff_bb_casa, -abs_max, abs_max, plot_grid, plot_circles, npix, 'seismic',
-               sky_file, None, locate_max)
+               sky_file, None, locate_max, wsc_size, wsc_scale)
     plt.title('(e) Bluebild minus CASA', pad=14)
     plt.gca().coords[0].set_axislabel("Right ascension")
     plt.gca().coords[1].set_axislabel(" ")
-    plt.gca().coords[1].set_ticklabel_visible(True)
+    plt.gca().coords[1].set_ticklabel_visible(False)
 
     plt.gca().set_autoscale_on(False)
     plt.subplot(236, projection=wcs, slices=('x', 'y', 0, 0))
     my_subplot(plt, wcs, diff_bb_wsc, -abs_max, abs_max, plot_grid, plot_circles, npix, 'seismic',
-               sky_file, None, locate_max)
+               sky_file, None, locate_max, wsc_size, wsc_scale)
     plt.title('(f) Bluebild minus WSClean', pad=14)
     plt.gca().coords[0].set_axislabel("Right ascension")
     plt.gca().coords[1].set_axislabel(" ")
-    plt.gca().coords[1].set_ticklabel_visible(True)
-
-    cb_ax = fig.add_axes([0.92, 0.115, 0.012, 0.34])
+    plt.gca().coords[1].set_ticklabel_visible(False)
+    
+    cb_ax = fig.add_axes([0.94, 0.115, 0.012, 0.34])
     cbar = plt.colorbar(cax=cb_ax)
     cbar.ax.tick_params(size=0)
-
+    cbar.set_label("Intensity difference [Jy/beam]")
+    
     plt.savefig(file_png, bbox_inches='tight', dpi=1400)
     print("-I-", file_png)
 
@@ -1624,8 +1646,10 @@ if __name__ == "__main__":
     parser.add_argument('--wsc_log',   help='WSClean log file')
     parser.add_argument('--casa_fits', help='CASA fits file')
     parser.add_argument('--casa_log',  help='CASA log file')
-    parser.add_argument('--outname',   help='Plots naming prefix',    required=True)
-    parser.add_argument('--outdir',    help='Plots output directory', required=True)
+    parser.add_argument('--outname',   help='Plots naming prefix',     required=True)
+    parser.add_argument('--outdir',    help='Plots output directory',  required=True)
+    parser.add_argument('--wsc_size',  help='WSClean size paramater',  required=True, type=int)
+    parser.add_argument('--wsc_scale', help='WSClean scale parameter', required=True, type=int)
     parser.add_argument('--flip_lr',   help='Flip image left-rigth', action='store_true')
     parser.add_argument('--flip_ud',   help='Flip image up-down',    action='store_true')
     parser.add_argument('--sky_file',  help='Simulated point sources RA and DEC')
@@ -1657,7 +1681,8 @@ if __name__ == "__main__":
         plot_wsc_casa_bb(args.wsc_fits, args.wsc_log,
                          args.casa_fits, args.casa_log,
                          args.bb_grid, args.bb_data, args.bb_json,
-                         args.outdir, args.outname, sky_file)
+                         args.outdir, args.outname, sky_file,
+                         args.wsc_size, args.wsc_scale)
 
     print("-W- Ignore 1 to 1 plots")
     sys.exit(0)
