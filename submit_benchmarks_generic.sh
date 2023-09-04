@@ -7,6 +7,7 @@ set -e
 ARGUMENT_LIST=(
     "pipeline"
     "bench-name"
+    "outdir"
     "package"
     "proc-unit"
     "compiler"
@@ -20,9 +21,11 @@ ARGUMENT_LIST=(
     "time-slice-pe"
     "time-slice-im"
     "sigma"
-    "wsc_scale"
+    #"wsc_scale"
+    "fov_deg"
     "precision"
     "filter_negative_eigenvalues"
+    "channel_id"
 )
 
 # debug line
@@ -41,6 +44,7 @@ do
     case "$1" in
         --pipeline)       pipeline="$2";       shift;;
         --bench-name)     bench_name="$2";     shift;;
+        --outdir)         outdir="$2";         shift;;
         --package)        package="$2";        shift;;
         --proc-unit)      proc_unit="$2";      shift;;
         --compiler)       compiler="$2";       shift;;
@@ -54,9 +58,11 @@ do
         --time-slice-pe)  time_slice_pe="$2";  shift;;
         --time-slice-im)  time_slice_im="$2";  shift;;
         --sigma)          sigma="$2";          shift;;
-        --wsc_scale)      wsc_scale="$2";      shift;;
+        #--wsc_scale)      wsc_scale="$2";      shift;;
+        --fov_deg)        fov_deg="$2";      shift;;
         --precision)      precision="$2";      shift;;
         --filter_negative_eigenvalues) fne="$2"; shift;;
+        --channel_id)     channel_id="$2";        shift;;
         (--) shift; break;;
         (-*) echo "$0: error - unrecognized option $1" 1>&2; exit 1;;
         (*) break;;
@@ -66,6 +72,7 @@ done
 
 : ${pipeline:?Missing mandatory --pipeline option to specify the prefix of the pipeline to run}
 : ${bench_name:?Missing mandatory --bench-name option to specify which benchmark to run}
+: ${outdir:?Missing mandatory --outdir option}
 : ${package:?Missing mandatory --package option to specify which package to run [bipp, pypeline]}
 : ${proc_unit:?Missing mandatory --proc-unit  option to specify the processing unit [none, cpu, gpu]}
 : ${compiler:?Missing mandatory --compiler option to specify the compiler [gcc, cuda]}
@@ -76,6 +83,8 @@ done
 : ${precision:?Missing mandatory --precision option [single, double]}
 : ${telescope:?Missing mandatory --telescope option}
 : ${fne:?Missing mandatory --filter_negative_eigenvalues option}
+: ${channel_id:?Missing mandatory --channel_id option}
+: ${fov_deg:?Missing mandatory --fov_deg option}
 
 if [[ $sigma < 0.0 ]] || [[ $sigma > 1.0 ]]; then
     echo "-E- Invalid value for sigma ($sigma). Must be > 0.0 and < 1.0"
@@ -125,15 +134,17 @@ if [ "$fne" != "0" ] && [ "$fne" != "1" ]; then
     exit 1
 fi
 
+outname=${telescope}_${package}_${algo}_${proc_unit}_${fne}
+
 #
 ## Generate benchmark input file
 #
 module purge
 module load gcc python
-OUTDIR="/work/ska/orliac/benchmarks"
-out_dir="$OUTDIR/$bench_name/$package/$cluster/$proc_unit/$compiler/$precision/$algo"
+out_dir="$outdir/$bench_name/$package/$cluster/$proc_unit/$compiler/$precision/$algo"
 [ ! -d $out_dir ] && mkdir -pv $out_dir
 in_file="$out_dir/benchmark.in"
+#--wsc_scale=$wsc_scale \
 python generate_benchmark_input_file.py \
     --pipeline=$pipeline \
     --bench_name=$bench_name --proc_unit=$proc_unit \
@@ -141,8 +152,9 @@ python generate_benchmark_input_file.py \
     --in_file=$in_file --out_dir=$out_dir --ms_file=$ms_file \
     --time_start_idx=$time_start_idx --time_end_idx=$time_end_idx \
     --time_slice_pe=$time_slice_pe --time_slice_im=$time_slice_im \
-    --sigma=$sigma --wsc_scale=$wsc_scale \
-    --algo=$algo --telescope=$telescope --filter_negative_eigenvalues=$fne
+    --sigma=$sigma --fov_deg=$fov_deg \
+    --algo=$algo --telescope=$telescope --filter_negative_eigenvalues=$fne \
+    --channel_id=$channel_id --outname=$outname
 
 [ $? -eq 0 ] || (echo "-E- $ python generate_benchmark_input_file.py ... failed" && exit 1)
 echo "-I- Generated input file $in_file"
@@ -170,13 +182,14 @@ cp -v wsclean_log_to_json.py             $out_dir
 cp -v casa_log_to_json.py                $out_dir
 cp -v add_time_stats_to_bluebild_json.py $out_dir
 cp -v get_ms_timerange.py                $out_dir
+cp -v get_scale.py                       $out_dir
 cp -r $ms_file $out_dir
 
 cd $out_dir
 
 slurm_opts=$(sed "s/|/ /g" <<< $slurm_opts)
 slurm_opts="$slurm_opts --array 0-${NJOBS}"
-[ "$cluster" == "izar" ] && slurm_opts="$slurm_opts%4" ### Adapt here for max simulatneous jobs
+[ "$cluster" == "izar" ] && slurm_opts="$slurm_opts%8" ### Adapt here for max simulatneous jobs
 #[ "$cluster" == "izar" ] && slurm_opts="$slurm_opts%10" ### Adapt here for max simulatneous jobs
 echo
 echo "slurm_opts >>$slurm_opts<<"

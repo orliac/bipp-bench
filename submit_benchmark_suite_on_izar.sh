@@ -38,9 +38,10 @@ MS_FILE=${IN_DIR}/${MS_BASENAME}
 # ! Use "=" to pass value of Slurm option: --opt-name=value and not --opt-name value
 # TODO(eo) White spaces are making problems, check that
 # Dev: 1 socket / Prod: 2 sockets
-#SLURM_OPTS="--partition=gpu|--gres=gpu:1|--time=00-12:00:00|--cpus-per-task=20|--mem=400G"
+#SLURM_OPTS="--partition=gpu|--gres=gpu:1|--time=00-12:00:00|--cpus-per-task=20|--mem=380G"
 #SLURM_OPTS="--partition=test|--gres=gpu:1|--time=00-00:30:00|--cpus-per-task=20|--mem=150G"
-SLURM_OPTS="--partition=gpu|--gres=gpu:1|--time=00-01:00:00|--cpus-per-task=20|--mem=80G"
+#SLURM_OPTS="--partition=gpu|--gres=gpu:1|--time=00-01:00:00|--cpus-per-task=20|--mem=80G"
+SLURM_OPTS="--partition=build|--gres=gpu:1|--time=00-01:00:00|--cpus-per-task=20|--mem=80G"
 
 CLUSTER=izar
 BENCH_NAME=bipp-paper
@@ -61,7 +62,7 @@ COMMON+=" --filter_negative_eigenvalues 0"
 echo $COMMON
 
 # Reference (pypeline python cpu)
-sh submit_benchmarks_generic.sh --slurm-opts "$SLURM_OPTS" $COMMON --package pypeline --proc-unit none --compiler gcc  --algo ss
+#sh submit_benchmarks_generic.sh --slurm-opts "$SLURM_OPTS" $COMMON --package pypeline --proc-unit none --compiler gcc  --algo ss
 
 # pypeline
 #sh submit_benchmarks_generic.sh --slurm-opts "$SLURM_OPTS" $COMMON --package pypeline --proc-unit gpu  --compiler cuda --algo ss
@@ -70,8 +71,8 @@ sh submit_benchmarks_generic.sh --slurm-opts "$SLURM_OPTS" $COMMON --package pyp
 #sh submit_benchmarks_generic.sh --slurm-opts "$SLURM_OPTS" $COMMON --package pypeline --proc-unit cpu  --compiler gcc  --algo nufft
 
 # bipp
-sh submit_benchmarks_generic.sh --slurm-opts "$SLURM_OPTS" $COMMON --package bipp     --proc-unit gpu  --compiler cuda --algo ss
-sh submit_benchmarks_generic.sh --slurm-opts "$SLURM_OPTS" $COMMON --package bipp     --proc-unit cpu  --compiler gcc  --algo ss
+#sh submit_benchmarks_generic.sh --slurm-opts "$SLURM_OPTS" $COMMON --package bipp     --proc-unit gpu  --compiler cuda --algo ss
+#sh submit_benchmarks_generic.sh --slurm-opts "$SLURM_OPTS" $COMMON --package bipp     --proc-unit cpu  --compiler gcc  --algo ss
 sh submit_benchmarks_generic.sh --slurm-opts "$SLURM_OPTS" $COMMON --package bipp     --proc-unit gpu  --compiler cuda --algo nufft
-sh submit_benchmarks_generic.sh --slurm-opts "$SLURM_OPTS" $COMMON --package bipp     --proc-unit cpu  --compiler gcc  --algo nufft
+#sh submit_benchmarks_generic.sh --slurm-opts "$SLURM_OPTS" $COMMON --package bipp     --proc-unit cpu  --compiler gcc  --algo nufft
 

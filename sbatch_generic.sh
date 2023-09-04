@@ -81,6 +81,8 @@ TIME_END_IDX="$(get_option_value "$input_line" "--time_end_idx")"
 WSC_SIZE="$(get_option_value "$input_line" "--pixw")"
 WSC_SCALE="$(get_option_value "$input_line" "--wsc_scale")"
 MS_FILE="$(get_option_value "$input_line" "--ms_file")"
+CHANNEL_ID="$(get_option_value "$input_line" "--channel_id")"
+OUTNAME="$(get_option_value "$input_line" "--outname")"
 MS_BASENAME=$(basename -- "$MS_FILE")
 OUT_DIR="$(get_option_value "$input_line" "--output_directory")"
 [ ! -d $OUT_DIR ] && mkdir -pv $OUT_DIR
@@ -96,8 +98,8 @@ RUN_CASA=1
 RUN_WSCLEAN=1
 
 CASA_OUT=dirty_casa
-CASA_LOG=casa.log
-
+CASA_LOG=dirty_casa.log
+CASA_TIME_LOG=dirty_casa_time.log
 
 if [[ $RUN_CASA == 1 ]]; then
 
@@ -107,20 +109,14 @@ if [[ $RUN_CASA == 1 ]]; then
 
     cp -r $SOL_DIR/$MS_BASENAME .
 
-    CASA=~/SKA/casa-6.5.3-28-py3.8/bin/casa
-    [ -f $CASA ] || (echo "Fatal. Could not find $CASA" && exit 1)
-    which $CASA
-    #$CASA --help
-
     source ${ENV_SPACK}/activate.sh
     source ${VENV}/bin/activate
-
 
     TIME_FILE=${OUT_DIR}/time.file
     python $SOL_DIR/get_ms_timerange.py \
         --ms ${MS_FILE} \
         --data 'DATA' \
-        --channel_id 0 \
+        --channel_id ${CHANNEL_ID} \
         --time_start_idx ${TIME_START_IDX} \
         --time_end_idx ${TIME_END_IDX} \
         --time_file ${TIME_FILE}
@@ -134,7 +130,12 @@ if [[ $RUN_CASA == 1 ]]; then
     deactivate
     source ${ENV_SPACK}/deactivate.sh
 
-    $CASA \
+    CASA=~/SKA/casa-6.5.3-28-py3.8/bin/casa
+    [ -f $CASA ] || (echo "Fatal. Could not find $CASA" && exit 1)
+    which $CASA
+    $CASA --version
+
+    casa_cmd="$CASA \
         --nogui \
         --norc \
         --notelemetry \
@@ -144,9 +145,14 @@ if [[ $RUN_CASA == 1 ]]; then
         --out_name ${CASA_OUT} \
         --imsize ${WSC_SIZE} \
         --cell ${WSC_SCALE} \
-        --timerange $CASA_TIMERANGE \
-        --spw '*:0'
+        --timerange ${CASA_TIMERANGE} \
+        --spw *:${CHANNEL_ID}"
     echo; echo
+
+    /usr/bin/time \
+        --output=$CASA_TIME_LOG \
+        --portability \
+        ${casa_cmd} | tee ${CASA_LOG}
 
     source ${ENV_SPACK}/activate.sh
     source ${VENV}/bin/activate
@@ -154,6 +160,11 @@ if [[ $RUN_CASA == 1 ]]; then
     echo
     python $SOL_DIR/casa_log_to_json.py --casa_log ${CASA_LOG}
     echo
+
+    python $SOL_DIR/add_time_stats_to_bluebild_json.py \
+        --bb_json ${CASA_OUT}.json \
+        --bb_time_log ${CASA_TIME_LOG}
+
 else
     source ${ENV_SPACK}/activate.sh
     source ${VENV}/bin/activate
@@ -166,6 +177,7 @@ fi
 WSCLEAN_PSF="-make-psf"
 WSCLEAN_OUT=dirty_wsclean
 WSCLEAN_LOG=dirty_wsclean.log
+WSCLEAN_TIME_LOG=dirty_wsclean_time.log
 WSCLEAN_CLEAN_OUT=clean_wsclean
 WSCLEAN_CLEAN_LOG=clean_wsclean.log
 
@@ -176,44 +188,54 @@ if [[ $RUN_WSCLEAN == 1 ]]; then
     echo =============================================================================
 
     # dirty
+    #    -make-psf \
+
     cp -r $SOL_DIR/$MS_BASENAME .
-    time wsclean \
+    wsclean_cmd="wsclean \
         -verbose \
         -log-time \
-        -channel-range 0 1 \
+        -channel-range $CHANNEL_ID $(expr $CHANNEL_ID + 1) \
         -size ${WSC_SIZE} ${WSC_SIZE} \
         -scale ${WSC_SCALE}asec \
         -pol I \
         -weight natural \
         -name ${WSCLEAN_OUT} \
         -niter 0 \
-        -make-psf \
         -interval ${TIME_START_IDX} ${TIME_END_IDX} \
-        ${MS_BASENAME} \
-        | tee ${WSCLEAN_LOG}
+        ${MS_BASENAME}"
+
+    /usr/bin/time \
+        --output=$WSCLEAN_TIME_LOG \
+        --portability \
+        ${wsclean_cmd} | tee ${WSCLEAN_LOG}
     
     echo
     python $SOL_DIR/wsclean_log_to_json.py --wsc_log ${WSCLEAN_LOG}
     echo
 
+    python $SOL_DIR/add_time_stats_to_bluebild_json.py \
+          --bb_json ${WSCLEAN_OUT}.json \
+          --bb_time_log ${WSCLEAN_TIME_LOG}
+
     # clean
-    cp -r $SOL_DIR/$MS_BASENAME .
-    time wsclean \
-        -verbose \
-        -log-time \
-        -channel-range 0 1 \
-        -size ${WSC_SIZE} ${WSC_SIZE} \
-        -scale ${WSC_SCALE}asec \
-        -pol I \
-        -weight natural \
-        -niter 0 \
-        -name ${WSCLEAN_CLEAN_OUT} \
-        $WSCLEAN_PSF \
-        $WSCLEAN_INTERVAL \
-        -niter 5000 -mgain 0.8 -threshold 0.1 \
-        ${MS_BASENAME} \
-        | tee ${WSCLEAN_CLEAN_LOG}
-    
+    if [[ 1 == 0 ]]; then
+        cp -r $SOL_DIR/$MS_BASENAME .
+        time wsclean \
+            -verbose \
+            -log-time \
+            -channel-range 0 1 \
+            -size ${WSC_SIZE} ${WSC_SIZE} \
+            -scale ${WSC_SCALE}asec \
+            -pol I \
+            -weight natural \
+            -niter 0 \
+            -name ${WSCLEAN_CLEAN_OUT} \
+            $WSCLEAN_PSF \
+            $WSCLEAN_INTERVAL \
+            -niter 5000 -mgain 0.8 -threshold 0.1 \
+            ${MS_BASENAME} \
+            | tee ${WSCLEAN_CLEAN_LOG}
+    fi
     #echo
     #python $SOL_DIR/wsclean_log_to_json.py --wsc_log ${WSCLEAN_CLEAN_LOG}
     #echo
@@ -225,14 +247,23 @@ echo ===========================================================================
 echo ${pipeline}
 echo =============================================================================
 echo
-BLUEBILD_LOG=$OUT_DIR/bluebild.log
-BLUEBILD_TIME_LOG=$OUT_DIR/bluebild_time.log
+BLUEBILD_LOG=$OUT_DIR/${OUTNAME}_bluebild.log
+BLUEBILD_TIME_LOG=$OUT_DIR/${OUTNAME}_bluebild_time.log
 
 export CUDA_ENABLE_COREDUMP_ON_EXCEPTION=1
 
 echo "### input_line = " $input_line
 
-time -p (python -u ${pipeline}_${algo}_${package}.py $input_line | tee ${BLUEBILD_LOG}) 2> ${BLUEBILD_TIME_LOG}
+py_script=${pipeline}_${algo}_${package}.py
+
+/usr/bin/time \
+    --output=$BLUEBILD_TIME_LOG \
+    --portability python -u ${py_script} ${input_line} | tee ${BLUEBILD_LOG}
+
+python $SOL_DIR/add_time_stats_to_bluebild_json.py \
+    --bb_json $OUT_DIR/${OUTNAME}_stats.json \
+    --bb_time_log ${BLUEBILD_TIME_LOG}
+
 #time -p (cuda-gdb --args python -u ${pipeline}_${algo}_${package}.py $input_line | tee ${BLUEBILD_LOG}) 2> ${BLUEBILD_TIME_LOG}
 
 echo
@@ -241,9 +272,6 @@ echo "==========================================================================
 cat ${BLUEBILD_TIME_LOG}
 echo "=========================================================================="
 
-echo
-python $SOL_DIR/add_time_stats_to_bluebild_json.py --bb_json $OUT_DIR/stats.json --bb_time_log ${BLUEBILD_TIME_LOG}
-echo
 
 echo =============================================================================
 echo Generate plots
@@ -254,11 +282,11 @@ cd $OUT_DIR
 
 PLOTS_CMD=""
 PLOTS_CMD+="python $SOL_DIR/plots.py"
-PLOTS_CMD+=" --bb_grid   I_lsq_eq_grid.npy"
-PLOTS_CMD+=" --bb_data   I_lsq_eq_data.npy"
-PLOTS_CMD+=" --bb_json   stats.json"
+PLOTS_CMD+=" --bb_grid   ${OUTNAME}_I_lsq_eq_grid.npy"
+PLOTS_CMD+=" --bb_data   ${OUTNAME}_I_lsq_eq_data.npy"
+PLOTS_CMD+=" --bb_json   ${OUTNAME}_stats.json"
 PLOTS_CMD+=" --outdir ${OUT_DIR}"
-PLOTS_CMD+=" --outname ABC123"
+PLOTS_CMD+=" --outname ${OUTNAME}"
 PLOTS_CMD+=" --flip_lr"
 PLOTS_CMD+=" --wsc_fits  ${WSCLEAN_OUT}-dirty.fits"
 PLOTS_CMD+=" --wsc_log   ${WSCLEAN_LOG}"
