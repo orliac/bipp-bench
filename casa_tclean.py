@@ -7,11 +7,13 @@ parser = argparse.ArgumentParser(description='Run CASA tclean to produce a dirty
 parser.add_argument('--ms_file',  help='path to MS dataset to process', required=True)
 parser.add_argument('--out_name', help='Output name', required=True)
 parser.add_argument('--imsize',   help='Image width in pixel', type=int, required=True)
-parser.add_argument('--cell',     help='Cell size in asec', type=int, required=True)
+parser.add_argument('--cell',     help='Cell size in asec', type=float, required=True)
 parser.add_argument('--spw',      help='Select spectral window/channels', required=False)
 parser.add_argument('--observation', help='Observation ID range', required=False)
 parser.add_argument('--timerange', help='Range of time to select from data', required=False)
 args = parser.parse_args()
+
+print("-D- casa_tclean.py args =", args)
 
 # generate standard listobs listing
 print(f"-I- Running CASA listobs on {args.ms_file}")
@@ -21,7 +23,7 @@ print("\n\n")
 print("-D- args.timerange =", args.timerange)
 
 ts = time.time()
-tclean(vis=args.ms_file, imagename=args.out_name, imsize=args.imsize, cell=args.cell, niter=0,
+tclean(vis=args.ms_file, imagename=args.out_name, imsize=args.imsize, cell=str(args.cell)+'arcsec', niter=0,
        selectdata=True, spw=args.spw, timerange=args.timerange)
 te = time.time()
 print(f"#@# dirty_casa {te - ts:.3f}")
