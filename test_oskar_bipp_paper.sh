@@ -14,7 +14,7 @@ RUN_WSCLEAN=1
 RUN_BIPP=1
 RUN_BIPP_PLOT=1
 
-PLOT_ONLY=0
+PLOT_ONLY=1
 if [[ $PLOT_ONLY == 1 ]]; then
     RUN_OSKAR=0; RUN_CASA=0; RUN_WSCLEAN=0; RUN_BIPP=0;
 fi
@@ -277,6 +277,7 @@ for comb in ${combs[@]}; do
           --outdir   ${OUT_DIR} \
           --flip_lr \
           --sky_file ${IN_DIR}/${MS_BASENAME_}.sky \
+          --wsc_size ${WSC_SIZE} --wsc_scale ${WSC_SCALE} \
           --outname  "${TELESCOPE}_${algo}_${package}_${proc_unit}_${BIPP_NLEV}_${BIPP_FNE}"   ###### adapt here
 
       echo "-I- plots to be found under ${OUT_DIR}"
