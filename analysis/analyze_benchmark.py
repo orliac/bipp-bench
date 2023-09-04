@@ -5,6 +5,7 @@ import numpy as np
 import benchtb
 import argparse
 import matplotlib.pyplot as plt
+from matplotlib.ticker import ScalarFormatter
 
 
 def check_args(args_in):
@@ -20,54 +21,168 @@ def check_args(args_in):
             
 def define_all_solutions():
 
-    marker_size = 8
-    line_width  = 0.5
-
     all_sols = {
         "pcs" : {
             'path': f"pypeline/{CLUSTER}/none/gcc/{PRECISION}/ss",
             'legend': 'Bluebild CPU SS',
             'name': 'BluebildSsCpu',
             'color': 'black',
-            'marker': 'x', 'markersize': marker_size, 'linestyle': '-', 'linewidth': line_width
+            'marker': 'x', 'markersize': MARKER_SIZE, 'linestyle': '-', 'linewidth': LINE_WIDTH
         },
         "bgs" : {
             'path': f"bipp/{CLUSTER}/gpu/cuda/{PRECISION}/ss",
             'legend': 'BIPP GPU SS',
             'name': 'BippSsGpu',
             'color': '#76B900',
-            'marker': 'p', 'markersize': marker_size, 'linestyle': 'dashed', 'linewidth': line_width
+            'marker': 'p', 'markersize': MARKER_SIZE, 'linestyle': 'dashed', 'linewidth': LINE_WIDTH
         },
         "bcs" : {
             'path': f"bipp/{CLUSTER}/cpu/gcc/{PRECISION}/ss",
             'legend': 'BIPP CPU SS',
             'color': 'red',
             'name': 'BippSsCpu',
-            'marker': 'p', 'markersize': marker_size, 'linestyle': 'dashed', 'linewidth': line_width
+            'marker': 'p', 'markersize': MARKER_SIZE, 'linestyle': 'dashed', 'linewidth': LINE_WIDTH
         },
         "bgn" : {
             'path': f"bipp/{CLUSTER}/gpu/cuda/{PRECISION}/nufft",
             'legend': 'BIPP GPU NUFFT',
             'name': 'BippNufftGpu',
             'color': '#76B900',
-            'marker': '*', 'markersize': marker_size, 'linestyle': 'dashed', 'linewidth': line_width
+            'marker': '*', 'markersize': MARKER_SIZE, 'linestyle': 'dashed', 'linewidth': LINE_WIDTH
         },
         "bcn" : {
             'path': f"bipp/{CLUSTER}/cpu/gcc/{PRECISION}/nufft",
             'legend': 'BIPP CPU NUFFT',
             'name': 'BippNufftCpu',
             'color': 'red',
-            'marker': '*', 'markersize': marker_size, 'linestyle': 'dashed', 'linewidth': line_width
+            'marker': '*', 'markersize': MARKER_SIZE, 'linestyle': 'dashed', 'linewidth': LINE_WIDTH
         }
     }
 
     return all_sols
 
+# Plot camemberts 
+def camemberts(nsta, nlev, pixw, sol):
+    print(f"\n\n@@@ camemberts nsta={nsta}, nlev={nlev} @@@")
+    path_pixw = os.path.join(args.bench_root, ALL_SOLS[sol]['path'], str(nsta), str(nlev), str(pixw))
+    specs     = benchtb.get_solution_specs_from_path(path_pixw, args.bench_root)
+    json_base = os.path.join(path_pixw, f"{args.telescope}_{specs['package']}_{specs['algo']}_{specs['proc_unit']}_{FNE}")
+    bipp_json = json_base + "_stats.json"
+    print(bipp_json)
+    bipp_stats = benchtb.read_json_file(bipp_json)
+    print(bipp_stats)
+    timings = bipp_stats['timings']
+    time    = bipp_stats['time']
+    print(timings)
 
-def plot_wsclean_vs_bipp(nsta, nlev, pixws):
-    print(f"@@@ plot_wsclean_vs_bipp nsta={nsta}, nlev={nlev} @@@")
+    t_tot  = timings['tot']
+    t_real = time['real']
+
+    del timings['tot']
+    del timings['ifim']
+    del timings['ifpe']
+    del timings['ifpe_plot']
+    del timings['sfpe']
+    del timings['sfim']
+
+    t_overhead = t_real - t_tot
+    print(f"t_overhead = {t_overhead:.3f}")
+    timings['overhead'] = t_overhead
+
+    timings["Processing (PE)"]   = timings.pop('ifpe_proc')
+    timings["Processing (IM)"]   = timings.pop('ifim_proc')
+    timings["Visibilities (PE)"] = timings.pop('ifpe_vis')
+    timings["Visibilities (IM)"] = timings.pop('ifim_vis')
+    timings["Plotting"]          = timings.pop('ifim_plot')
+    timings["Others"]            = timings.pop('overhead')
+
+    colors = ['orangered', 'orangered',
+              'lime', 'lime',
+              'skyblue', 'violet',]
+
+    labels = timings.keys()
+    sizes  = timings.values()
+    fig, ax = plt.subplots()
+
+    def func(pct, allvals):
+        sum_ = sum(allvals)
+        abs_ = pct * 0.01 * sum_
+        return f"{pct:.1f}%\n({abs_:.1f} s)"
+
+    ax.pie(sizes, labels=labels, autopct=lambda pct: func(pct, sizes),
+           startangle=90, colors=colors,
+           wedgeprops = {"edgecolor" : "silver",
+                         'linewidth': 1,
+                         'antialiased': True})
+    plt.title(f"Image size: {pixw} pixels, tts: {t_real} sec")
+    plt.tight_layout()
+    plt.savefig(f"camembert_{sol}_{nlev}_{pixw}.png")
+
+    fig, axes = plt.subplots(nrows=1, ncols=4)
+    plt.subplots_adjust(hspace=0)
+    fig.set_figwidth(16)
+    fig.set_figheight(4.3)
+    i = 0
+    for pixw in 256, 512, 1024, 2048:
+
+        path_pixw = os.path.join(args.bench_root, ALL_SOLS[sol]['path'], str(nsta), str(nlev), str(pixw))
+        specs     = benchtb.get_solution_specs_from_path(path_pixw, args.bench_root)
+        json_base = os.path.join(path_pixw, f"{args.telescope}_{specs['package']}_{specs['algo']}_{specs['proc_unit']}_{FNE}")
+        bipp_json = json_base + "_stats.json"
+        bipp_stats = benchtb.read_json_file(bipp_json)
+        timings = bipp_stats['timings']
+        time    = bipp_stats['time']
+
+        t_tot  = timings['tot']
+        t_real = time['real']
+
+        del timings['tot']
+        del timings['ifim']
+        del timings['ifpe']
+        del timings['ifpe_plot']
+        del timings['sfpe']
+        del timings['sfim']
+
+        t_overhead = t_real - t_tot
+        #print(f"t_overhead = {t_overhead:.3f}")
+        timings['overhead'] = t_overhead
+        
+        timings["Processing (PE)"]   = timings.pop('ifpe_proc')
+        timings["Processing (IM)"]   = timings.pop('ifim_proc')
+        timings["Visibilities (PE)"] = timings.pop('ifpe_vis')
+        timings["Visibilities (IM)"] = timings.pop('ifim_vis')
+        timings["Plotting"]          = timings.pop('ifim_plot')
+        timings["Others"]          = timings.pop('overhead')
+        
+        labels = timings.keys()
+        sizes  = timings.values()
+
+        axes[i].set_title(f"res {pixw} pixels; tts: {t_real} sec")
+        wedges, texts, autotexts = axes[i].pie(sizes, autopct=lambda pct: func(pct, sizes),
+                                               startangle=90, colors=colors,
+                                               wedgeprops = {"edgecolor" : "silver",
+                                                             'linewidth': 1,
+                                                             'antialiased': True})
+
+        i += 1
+
+    ax = fig.add_subplot(1, 1, 1, frame_on=False)
+    ax.set_xticks([])
+    ax.set_yticks([])
+    ax.legend(wedges, labels, loc="lower center", ncol=6,
+              bbox_to_anchor=(0.15, -0.05, 0.7, 0.5), frameon=False)
+    plt.tight_layout()
+    plt.savefig(f"camembert_{sol}_{nlev}.png")
+
+
+def plot_wsclean_vs_bipp(nsta, nlev, pixws, sols):
+
+    print(f"\n\n@@@ plot_wsclean_vs_bipp nsta={nsta}, nlev={nlev} @@@")
+
+    #print(sols)
+
     paths_sols = benchtb.get_list_of_solutions(bench_root=args.bench_root, nsta=nsta, nlev=nlev, pixw=2048)
-    print("paths_sols =\n", paths_sols)
+    #print("paths_sols =\n", paths_sols)
     
     t_min = sys.float_info.max
     t_max = sys.float_info.min
@@ -77,40 +192,48 @@ def plot_wsclean_vs_bipp(nsta, nlev, pixws):
         all_wsc[pixw]  = []
         all_casa[pixw] = []
 
+    my_sols = {}
+
     for sol in sols:
-        print(sol, "@@", sols[sol])
+        #print(" ===>", sol, sols[sol])
         path_lev = os.path.join(args.bench_root, sols[sol]['path'], str(nsta), str(nlev))
         if not os.path.isdir(path_lev): raise Exception(f"path {path_lev} does not exist.")
-        sols[sol]['tts'] = {'bipp': [], 'casa': [], 'wsc': []}
+        my_sols[sol] = sols[sol]
+        my_sols[sol]['tts'] = {'bipp': [], 'casa': [], 'wsc': []}
         for pixw in sorted(pixws):
             path_pixw = os.path.join(path_lev, str(pixw))
             if not os.path.isdir(path_pixw): raise Exception(f"path {path_pixw} does not exist.")
-            print(f" path_pixw = {path_pixw}")
+            #print(f" path_pixw = {path_pixw}")
             specs = benchtb.get_solution_specs_from_path(path_pixw, args.bench_root)
             json_base = os.path.join(path_pixw, f"{args.telescope}_{specs['package']}_{specs['algo']}_{specs['proc_unit']}_0")
             bipp_json = json_base + "_stats.json"
             bipp_stats = benchtb.read_json_file(bipp_json)
             casa_stats = benchtb.read_dirty_casa_json_stat_file(path_pixw)
             wsc_stats  = benchtb.read_dirty_wsclean_json_stat_file(path_pixw)
-            print(f"   -> {bipp_stats}")
-            print(f"   -> {casa_stats}")
-            print(f"   -> {wsc_stats}")
+            #print(f"   -> {bipp_stats}")
+            #print(f"   -> {casa_stats}")
+            #print(f"   -> {wsc_stats}")
             if bipp_stats is not None:
-                sols[sol]['tts']['bipp'].append((pixw, bipp_stats['time']['real']))
+                my_sols[sol]['tts']['bipp'].append((pixw, bipp_stats['time']['real']))
             if casa_stats is not None:
-                sols[sol]['tts']['casa'].append((pixw, casa_stats['timings']['t_tclean']))
-                all_casa[pixw].append(casa_stats['timings']['t_tclean'])
+                #my_sols[sol]['tts']['casa'].append((pixw, casa_stats['timings']['t_tclean']))
+                #all_casa[pixw].append(casa_stats['timings']['t_tclean'])
+                #all_casa[pixw].append(casa_stats['timings']['t_tclean'])
+                my_sols[sol]['tts']['casa'].append((pixw, casa_stats['time']['real']))
+                all_casa[pixw].append(casa_stats['time']['real'])
             if wsc_stats is not None:
-                sols[sol]['tts']['wsc'].append((pixw, wsc_stats['timings']['t_inv']))
-                all_wsc[pixw].append(wsc_stats['timings']['t_inv'])
+                #my_sols[sol]['tts']['wsc'].append((pixw, wsc_stats['timings']['t_inv']))
+                #all_wsc[pixw].append(wsc_stats['timings']['t_inv'])
+                my_sols[sol]['tts']['wsc'].append((pixw, wsc_stats['time']['real']))
+                all_wsc[pixw].append(wsc_stats['time']['real'])
             for pkg in 'bipp', 'casa', 'wsc':
-                if sols[sol]['tts'][pkg][-1][1] < t_min: t_min = sols[sol]['tts'][pkg][-1][1]
-                if sols[sol]['tts'][pkg][-1][1] > t_max: t_max = sols[sol]['tts'][pkg][-1][1]
+                if my_sols[sol]['tts'][pkg][-1][1] < t_min: t_min = my_sols[sol]['tts'][pkg][-1][1]
+                if my_sols[sol]['tts'][pkg][-1][1] > t_max: t_max = my_sols[sol]['tts'][pkg][-1][1]
 
 
-    print("---- plotting")
-    print(sols)
-    print(all_casa)
+    print("#### Times to solutions")
+    #print(my_sols)
+    #print(all_casa)
     x_min = np.power(2, np.floor(np.log2(np.min(pixws)))) / 1.2
     x_max = np.power(2, np.ceil(np.log2(np.max(pixws)))) * 1.2
     y_min = np.power(10, np.floor(np.log10(t_min)))
@@ -122,40 +245,45 @@ def plot_wsclean_vs_bipp(nsta, nlev, pixws):
     ax.set_xscale("log", basex=2)
     ax.set_xlim(x_min, x_max)
 
-    for sol in sols:
-        print(sol, sols[sol]['legend'])
-        x, y = zip(*sols[sol]['tts']['bipp'])
-        ax.plot(x, y, label=sols[sol]['legend'], color=sols[sol]['color'],
-                marker=sols[sol]['marker'], markersize=sols[sol]['markersize'],
-                linewidth=sols[sol]['linewidth'], linestyle=sols[sol]['linestyle'])
+    for sol in my_sols:
+        #print(sol, my_sols[sol]['legend'])
+        x, y = zip(*my_sols[sol]['tts']['bipp'])
+        ax.plot(x, y, 
+                label     = my_sols[sol]['legend'],    color      = my_sols[sol]['color'],
+                marker    = my_sols[sol]['marker'],    markersize = my_sols[sol]['markersize'],
+                linewidth = my_sols[sol]['linewidth'], linestyle  = my_sols[sol]['linestyle'])
 
     # Add averaged CASA
     sol = 'casa'
-    sols[sol] = {'tts': [],
-                 'legend': 'CASA',
-                 'color': 'pink',
-                 'marker': 'H', 'markersize': marker_size, 'linestyle': '-', 'linewidth': line_width
+    my_sols[sol] = {'tts': [],
+                    'legend': 'CASA',
+                    'color': 'pink',
+                    'marker': 'H', 'markersize': MARKER_SIZE, 'linestyle': '-', 'linewidth': LINE_WIDTH,
+                    'name': 'CASA'
     }
     for pixw in sorted(pixws):
-        sols[sol]['tts'].append((pixw, np.average(all_casa[pixw])))
-    x, y = zip(*sols[sol]['tts'])
-    ax.plot(x, y, label=sols[sol]['legend'], color=sols[sol]['color'],
-            marker=sols[sol]['marker'], markersize=sols[sol]['markersize'],
-            linewidth=sols[sol]['linewidth'], linestyle=sols[sol]['linestyle'])
+        my_sols[sol]['tts'].append((pixw, np.average(all_casa[pixw])))
+    x, y = zip(*my_sols[sol]['tts'])
+    ax.plot(x, y,
+            label     = my_sols[sol]['legend'],    color      = my_sols[sol]['color'],
+            marker    = my_sols[sol]['marker'],    markersize = my_sols[sol]['markersize'],
+            linewidth = my_sols[sol]['linewidth'], linestyle  = my_sols[sol]['linestyle'])
 
     # Add averaged WSClean
     sol = 'wsc'
-    sols[sol] = {'tts': [],
-                 'legend': 'WSClean',
-                 'color': 'skyblue',
-                 'marker': '+', 'markersize': marker_size, 'linestyle': '--', 'linewidth': line_width
+    my_sols[sol] = {'tts': [],
+                    'legend': 'WSClean',
+                    'color': 'skyblue',
+                    'marker': '+', 'markersize': MARKER_SIZE, 'linestyle': '--', 'linewidth': LINE_WIDTH,
+                    'name': 'WSClean'
     }
     for pixw in sorted(pixws):
-        sols[sol]['tts'].append((pixw, np.average(all_casa[pixw])))
-    x, y = zip(*sols[sol]['tts'])
-    ax.plot(x, y, label=sols[sol]['legend'], color=sols[sol]['color'],
-            marker=sols[sol]['marker'], markersize=sols[sol]['markersize'],
-            linewidth=sols[sol]['linewidth'], linestyle=sols[sol]['linestyle'])
+        my_sols[sol]['tts'].append((pixw, np.average(all_wsc[pixw])))
+    x, y = zip(*my_sols[sol]['tts'])
+    ax.plot(x, y,
+            label     = my_sols[sol]['legend'],    color      = my_sols[sol]['color'],
+            marker    = my_sols[sol]['marker'],    markersize = my_sols[sol]['markersize'],
+            linewidth = my_sols[sol]['linewidth'], linestyle  = my_sols[sol]['linestyle'])
 
     ax.set(xlabel='Image width [pixel]', ylabel='Time to solution [s]')
 
@@ -164,8 +292,54 @@ def plot_wsclean_vs_bipp(nsta, nlev, pixws):
     msg = f"{nlev} energy level" if nlev == 1 else f"{nlev} energy levels"
     ax.text(x_min * 1.03, y_min * 1.1, msg, family='monospace')
 
+    for axis in [ax.xaxis]:
+        axis.set_major_formatter(ScalarFormatter())
 
     fig.savefig(f"tts_{nlev}_energy_levels.png")
+
+
+    ### Speedup factors
+
+    print("#### Speedup factors plots")
+    print(nlev)
+    fig, ax = plt.subplots()
+    ax.set_yscale("log", basey=10)
+    ax.set_xscale("log", basex=2)
+    ax.set_xlim(x_min, x_max)
+
+    sol_ref = 'pcs'
+    x_ref, y_ref = zip(*my_sols[sol_ref]['tts']['bipp'])
+
+    for sol in my_sols:
+        #print(sol, my_sols[sol]['legend'])
+        if sol == 'wsc' or sol == 'casa':
+            x, y = zip(*my_sols[sol]['tts'])
+        else:
+            x, y = zip(*my_sols[sol]['tts']['bipp'])
+
+        sf =  np.array(y_ref) / np.array(y)
+        
+        
+        table_row = f"{my_sols[sol]['name']:16s}"
+        for el in sf:
+            table_row += f"& {el:6.2f}"
+        table_row += " \\\\"
+        print(table_row)
+
+        ax.plot(x, sf, 
+                label     = my_sols[sol]['legend'],    color      = my_sols[sol]['color'],
+                marker    = my_sols[sol]['marker'],    markersize = my_sols[sol]['markersize'],
+                linewidth = my_sols[sol]['linewidth'], linestyle  = my_sols[sol]['linestyle'])
+
+
+    ax.set(xlabel='Image width [pixel]', ylabel='Speedup factor [-]')
+    ax.legend(fontsize=8)
+    msg = f"{nlev} energy level" if nlev == 1 else f"{nlev} energy levels"
+    ax.text(600, 220, msg, family='monospace')
+    for axis in [ax.xaxis]:
+        axis.set_major_formatter(ScalarFormatter())
+    fig.savefig(f"speedups_{nlev}_energy_levels.png")
+
 
 # Min, max, mean, std, rms
 def check_solutions_consistency(nsta, nlev, pixw):
@@ -366,14 +540,17 @@ if __name__ == "__main__":
     CLUSTER='izar'
     PRECISION='single'
     FNE=0
+    MARKER_SIZE = 8
+    LINE_WIDTH  = 0.5
+
 
     # Define all possible solutions
-    all_sols = define_all_solutions()
+    ALL_SOLS = define_all_solutions()
 
     # Select solutions that were actually benchmarked 
     #sols = {"bgs": all_sols['bgs']}
-    sols = all_sols
-    print("sols =\n", sols)
+    SOLS = ALL_SOLS
+    print("SOLS =\n", SOLS)
 
     # Compare same solution over the various energy levels.
     #compare_levels()
@@ -381,16 +558,22 @@ if __name__ == "__main__":
 
     #plot_solutions_ranges(nsta=0, pixws=tree['pixws'])
     
+    # Plot tts and speedup factors
     #for nlev in 1, 2, 4, 8:
-    #    plot_wsclean_vs_bipp(nlev=nlev, nsta=0, cluster='izar', pixws=tree['pixws'])
+    #    plot_wsclean_vs_bipp(nlev=nlev, nsta=0, pixws=tree['pixws'], sols=SOLS)
+
+    for nlev in 1,:
+        for pixw in 256, 512, 1024, 2048:
+            camemberts(nlev=nlev, nsta=0, pixw=pixw, sol='bgn')
 
     # Show first solutions are equivalent regardless the number of energy levels considered
     # => only plot for a single clustering
-    for nlev in 1,:
-        plot_solutions_consistency(nlev=nlev, nsta=0, pixws=tree['pixws'])
+    #for nlev in 1,:
+    #    plot_solutions_consistency(nlev=nlev, nsta=0, pixws=tree['pixws'])
         
     #sys.exit(0)
 
+    
 
 
 """
