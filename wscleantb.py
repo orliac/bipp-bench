@@ -13,9 +13,17 @@ def get_wsclean_info_from_log(wsclean_log):
         patt = "Total nr. of visibilities to be gridded:\s*"
         if re.search(patt, line):
             wsc_totvis = re.split(patt, line)[-1]
+
+        # If natural weighting
         patt = "effective count after weighting:\s*"
         if re.search(patt, line):
             wsc_gridvis = re.split(patt, line)[-1]
+
+        # If uniform gridding
+        patt = "Gridded visibility count:\s*"
+        if re.search(patt, line):
+            wsc_gridvis = re.split(patt, line)[-1]
+
         if re.search("Inversion:", line):
             wsc_t_inv, wsc_t_pred, wsc_t_deconv = re.split("\s*Inversion:\s*|\s*,\s*prediction:\s*|\s*,\s*deconvolution:\s*", line)[-3:]
             t_inv    = datetime.datetime.strptime(wsc_t_inv,   '%H:%M:%S.%f') - datetime.datetime(1900,1,1)
@@ -28,6 +36,8 @@ def get_wsclean_info_from_log(wsclean_log):
     wsc_info += f"wsc t_inv    = {t_inv.total_seconds():.3f}\n"
     wsc_info += f"wsc t_pred   = {t_pred.total_seconds():.3f}\n"
     wsc_info += f"wsc t_deconv = {t_deconv.total_seconds():.3f}\n"
+
+    print(json.dumps(wsc_info))
 
     return wsc_totvis, wsc_gridvis, t_inv.total_seconds(), t_pred.total_seconds(), t_deconv.total_seconds(), wsc_info
 
