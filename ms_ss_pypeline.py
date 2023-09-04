@@ -61,6 +61,8 @@ if args.telescope == 'LOFAR':
     ms = measurement_set.LofarMeasurementSet(args.ms_file, args.nsta, station_only=True)
 elif args.telescope == 'SKALOW':
     ms = measurement_set.SKALowMeasurementSet(args.ms_file)
+elif args.telescope == 'MWA':
+    ms = measurement_set.MwaMeasurementSet(args.ms_file)
 else:
     raise Exception(f"Unknown telescope {args.telescope}!")
 
@@ -70,7 +72,7 @@ print(f"-I- ms.field_center = {ms.field_center}")
 gram = bb_gr.GramBlock(ctx)
 
 # Observation (old fashion, single channel)
-channel_id = 0
+channel_id = args.channel_id
 frequency = ms.channels["FREQUENCY"][channel_id]
 print(f"-I- frequency = {frequency}")
 wl = constants.speed_of_light / frequency.to_value(u.Hz)
@@ -95,57 +97,107 @@ time_id_im = slice(args.time_start_idx, args.time_end_idx, args.time_slice_im)
 ifpe_s = time.time()
 I_est = bb_pe.IntensityFieldParameterEstimator(args.nlev, sigma=args.sigma,
                                                filter_negative_eigenvalues=args.filter_negative_eigenvalues)
+IFPE_NVIS  = 0
+IFPE_TVIS  = 0
+IFPE_TPLOT = 0
+i_it = 0
+t0 = time.time()
 for t, f, S, _ in ms.visibilities(channel_id=[channel_id], time_id=time_id_pe, column="DATA"):
+    t1 = time.time()
+    t_vis = t1 - t0
+    IFPE_TVIS += t_vis
     wl_   = constants.speed_of_light / f.to_value(u.Hz)
     if wl_ != wl: raise Exception("Mismatch on frequency")
     XYZ  = ms.instrument(t)
+    t2   = time.time()
     W    = ms.beamformer(XYZ, wl)
+    t3   = time.time()
     S, W = measurement_set.filter_data(S, W)
+    n_vis = np.count_nonzero(S.data)
+    IFPE_NVIS += n_vis
+    t4 = time.time()
     G    = gram(XYZ, W, wl)
+    t5 = time.time()
     I_est.collect(S, G)
+    t6 = time.time()
+    print(f"-T- it {i_it:4d}:  vis {t_vis:.3f},  xyz {t2-t1:.3f}, w {t3-t2:.3f}  fd = {t4-t3:.3f}  g = {t5-t4:.3f}, coll {t6-t5:.3f}, tot {t6-t0:.3f}")
+    t0 = time.time()
+    i_it += 1
+
 N_eig, c_centroid = I_est.infer_parameters()
-#N_eig, c_centroid = 1, np.array(1)
 print("-I- IFPE N_eig =", N_eig)
 print("-I- c_centroid =\n", c_centroid)
+
 ifpe_e = time.time()
-print(f"#@#IFPE {ifpe_e - ifpe_s:.3f} sec")
+IFPE = ifpe_e - ifpe_s
+IFPE_TPROC = IFPE - IFPE_TVIS - IFPE_TPLOT
+print(f"#@#IFPE {IFPE:.3f} sec")
+print(f"#@#IFPE_NVIS {IFPE_NVIS} vis")
+print(f"#@#IFPE_TVIS {IFPE_TVIS:.3f} sec")
+print(f"#@#IFPE_TPLOT {IFPE_TPLOT:.3f} sec")
+print(f"#@#IFPE_TPROC {IFPE_TPROC:.3f} sec")
 
 N_antenna, N_station = W.shape
 print("-I- N_antenna =", N_antenna)
 print("-I- N_station =", N_station)
 
+
 # Imaging
-n_vis_ifim = 0
 ifim_s = time.time()
 I_dp = bb_dp.IntensityFieldDataProcessorBlock(N_eig, c_centroid, ctx,
                                               filter_negative_eigenvalues=args.filter_negative_eigenvalues)
 I_mfs = bb_sd.Spatial_IMFS_Block(wl, px_grid, args.nlev, args.nbits, ctx,
                                  filter_negative_eigenvalues=args.filter_negative_eigenvalues)
-plot_suffix = '_skalow'
+
+IFIM_NVIS  = 0
+IFIM_TVIS  = 0
+IFIM_TPLOT = 0
 i_it = 0
+t0 = time.time()
 for t, f, S, uvw in ms.visibilities(channel_id=[channel_id], time_id=time_id_im, column="DATA"):
+    t1 = time.time()
+    t_vis = t1 - t0
+    IFIM_TVIS += t_vis
     wl   = constants.speed_of_light / f.to_value(u.Hz)
     XYZ  = ms.instrument(t)
-    plots.plot_uvw(uvw, args.pixw, 'uvw' + plot_suffix, args.output_directory, "UV projected baselines")
+    t2 = time.time()
     W    = ms.beamformer(XYZ, wl)
+    t3 = time.time()
     S, W = measurement_set.filter_data(S, W)
-    n_vis = np.count_nonzero(S.data)
-    n_vis_ifim += n_vis
-    print(f"-I- {t.mjd:8f} n_vis =", n_vis)
-    plots.plot_beamweight_matrix(W.data, 'W' + plot_suffix, args.output_directory, "Beamweight matrix")
-    plots.plot_visibility_matrix(S.data, 'S' + plot_suffix, args.output_directory, "Visibility matrix")
-    # Compute G to plot it (used in I_dp)
-    G = gram(XYZ, W, wl)
-    plots.plot_gram_matrix(G.data, 'G' + plot_suffix, args.output_directory, "Gram matrix")
+    t4 = time.time()
     D, V, c_idx = I_dp(S, XYZ, W, wl)
-    plots.plot_eigen_vectors(V, 'V' + plot_suffix, args.output_directory, "Eigen vectors")
+    t5 = time.time()
     _ = I_mfs(D, V, XYZ.data, W.data, c_idx)
+    t6 = time.time()
+    n_vis = np.count_nonzero(S.data)
+    IFIM_NVIS += n_vis
+
+    if i_it == 0:
+        t_plot = time.time()
+        G = gram(XYZ, W, wl)
+        plots.plot_gram_matrix(G.data, f"{args.outname}_G_it{i_it}", args.output_directory, "Gram matrix")
+        plots.plot_visibility_matrix(S.data, f"{args.outname}_S_it{i_it}", args.output_directory, "Visibility matrix")
+        plots.plot_beamweight_matrix(W.data, f"{args.outname}_W_it{i_it}", args.output_directory, "Beam-forming matrix")
+        plots.plot_uvw(uvw, args.pixw, f"{args.outname}_uvw_it{i_it}", args.output_directory, "UV projected baselines")
+        plots.plot_eigen_vectors(V,  f"{args.outname}_V_it{i_it}", args.output_directory, "Eigen vectors")
+        t_plot = time.time() - t_plot
+        print(f"-W- Plotting took {t_plot:.3f} sec.")
+        IFIM_TPLOT += t_plot
+
+    print(f"-T- it {i_it:4d}:  vis {t_vis:.3f},  xyz {t2-t1:.3f}, w {t3-t2:.3f}  fd = {t4-t3:.3f}  i_dp = {t5-t4:.3f}, i_mfs = {t6-t5:.3f}, tot {t6-t0:.3f}")
+    t0 = time.time()
     i_it += 1
 
 I_std, I_lsq = I_mfs.as_image()
 
 ifim_e = time.time()
-print(f"#@#IFIM {ifim_e - ifim_s:.3f} sec  NVIS {n_vis_ifim}")
+IFIM = ifim_e - ifim_s
+IFIM_TPROC = IFIM - IFIM_TVIS - IFIM_TPLOT
+print(f"#@#IFIM      {IFIM:.3f} sec")
+print(f"#@#IFIM_NVIS {IFIM_NVIS} vis")
+print(f"#@#IFIM_TVIS {IFIM_TVIS:.3f} sec")
+print(f"#@#IFIM_PLOT {IFIM_TPLOT:.3f} sec")
+print(f"#@#IFIM_PROC {IFIM_TPROC:.3f} sec")
 
 #sys.exit(0)
 
@@ -194,8 +246,6 @@ print(f"#@#SFIM {sfim_e - sfim_s:.3f} sec")
 jkt0_e = time.time()
 print(f"#@#TOT {jkt0_e - jkt0_s:.3f} sec\n")
 
-print("-D- I_lsq_eq.shape", I_lsq_eq.data.shape)
-print("-D- I_lsq_eq =\n", I_lsq_eq.data)
 
 #EO: early exit when profiling
 if os.getenv('BB_EARLY_EXIT') == "1":
@@ -207,18 +257,26 @@ print("######################################################################")
 #print("-I- c_centroid =\n", c_centroid, "\n")
 #print("-I- px_grid:", px_grid.shape, "\n", px_grid, "\n")
 #print("-I- I_lsq:\n", I_lsq.data, "\n")
-#print("-I- I_lsq_eq:\n", I_lsq_eq.data, "\n")
+print("-I- I_lsq_eq:\n", I_lsq_eq.data, "\n")
 
 print("-I- args.output_directory:", args.output_directory)
 
-bipptb.dump_data(I_lsq_eq.data, 'I_lsq_eq_data', args.output_directory)
-bipptb.dump_data(I_lsq_eq.grid, 'I_lsq_eq_grid', args.output_directory)
+#bipptb.dump_data(I_lsq.data,    f"{args.outname}_I_lsq_data",   args.output_directory)
+bipptb.dump_data(I_lsq_eq.data, f"{args.outname}_I_lsq_eq_data", args.output_directory)
+bipptb.dump_data(I_lsq_eq.grid, f"{args.outname}_I_lsq_eq_grid", args.output_directory)
 
-bipptb.dump_json({'ifpe_s': ifpe_s, 'ifpe_e': ifpe_e,
-                  'ifim_s': ifim_s, 'ifim_e': ifim_e,
-                  'sfpe_s': sfpe_s, 'sfpe_e': sfpe_e,
-                  'sfim_s': sfim_s, 'sfim_e': sfim_e,
-                  'tot_s' : jkt0_s, 'tot_e' : jkt0_e,
-                  'n_vis_ifim': n_vis_ifim,
-                  'filename': 'stats.json',
+bipptb.dump_json({'ifpe': ifpe_e - ifpe_s,
+                  'ifim': ifim_e - ifim_s,
+                  'sfpe': sfpe_e - sfpe_s,
+                  'sfim': sfim_e - sfim_s,
+                  'tot' : jkt0_e - jkt0_s,
+                  'ifpe_tvis':  IFPE_TVIS,
+                  'ifpe_tplot': IFPE_TPLOT,
+                  'ifpe_tproc': IFPE_TPROC,
+                  'ifim_tvis':  IFIM_TVIS,
+                  'ifim_tplot': IFIM_TPLOT,
+                  'ifim_tproc': IFIM_TPROC,
+                  'ifpe_nvis': IFPE_NVIS,
+                  'ifim_nvis': IFIM_NVIS,
+                  'filename': f"{args.outname}_stats.json",
                   'out_dir': args.output_directory})

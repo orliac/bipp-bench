@@ -52,6 +52,8 @@ if args.telescope == 'LOFAR':
     ms = measurement_set.LofarMeasurementSet(args.ms_file, args.nsta, station_only=True)
 elif args.telescope == 'SKALOW':
     ms = measurement_set.SKALowMeasurementSet(args.ms_file)
+elif args.telescope == 'MWA':
+    ms = measurement_set.MwaMeasurementSet(args.ms_file)
 else:
     raise Exception(f"Unknown telescope {args.telescope}!")
 
@@ -61,7 +63,7 @@ print(f"-I- ms.field_center = {ms.field_center}")
 gram = bb_gr.GramBlock(ctx)
 
 # Observation
-channel_ids = [0]
+channel_ids = [args.channel_id]
 
 # Grids
 lmn_grid, xyz_grid = frame.make_grids(args.pixw, FoV.rad, ms.field_center)
@@ -74,31 +76,80 @@ print("-I- xyz_grid.shape =", xyz_grid.shape, "(after reshaping in SS)")
 time_id_pe = slice(args.time_start_idx, args.time_end_idx, args.time_slice_pe)
 time_id_im = slice(args.time_start_idx, args.time_end_idx, args.time_slice_im)
 
+#MAX_W_LAMBDA = 100 # From WSC?
+
+
 ### Intensity Field ===========================================================
 
 # Parameter Estimation
 ifpe_s = time.time()
 I_est = bb_pe.IntensityFieldParameterEstimator(args.nlev, sigma=args.sigma, ctx=ctx,
                                                filter_negative_eigenvalues=args.filter_negative_eigenvalues)
+IFPE_NVIS  = 0
+IFPE_TVIS  = 0
+IFPE_TPLOT = 0
+i_it = 0
+t0 = time.time()
 for t, f, S in ms.visibilities(channel_id=channel_ids, time_id=time_id_pe, column="DATA"):
+    t1 = time.time()
+    t_vis = t1 - t0
+    IFPE_TVIS += t_vis
     wl   = constants.speed_of_light / f.to_value(u.Hz)
     XYZ  = ms.instrument(t)
+    t2   = time.time()
     W    = ms.beamformer(XYZ, wl)
+    t3   = time.time()
+
+    n_vis = np.count_nonzero(S.data)
+    print("n_vis before =", n_vis)
+
+    """
+    UVW = ms.instrument.baselines(t, uvw=True, field_center=ms.field_center)
+    print("min, max w =", np.min(UVW[:,:,2]/wl), np.max(UVW[:,:,2]/wl))
+    flag_idx = (np.abs(UVW[:,:,2]) / wl) > MAX_W_LAMBDA
+    print("flagging ", flag_idx.sum(), "baselines")
+    S.data.setflags(write=1)
+    S.data[flag_idx] = 0
+    n_vis = np.count_nonzero(S.data)
+    print("n_vis before =", n_vis)
+    """
+
     S, W = measurement_set.filter_data(S, W)
-    G    = gram(XYZ, W, wl)
+    n_vis = np.count_nonzero(S.data)
+    print("n_vis final=", n_vis)
+
+    #print((np.absolute(S.data) < 1E-6).sum())
+    #print((np.sqrt(S.data.real ** 2 + S.data.imag ** 2) < 1E-3).sum())
+
+    IFPE_NVIS += n_vis
+    t4 = time.time()
+    G = gram(XYZ, W, wl)
+    t5 = time.time()
     I_est.collect(S, G)
+    t6 = time.time()
+    print(f"-T- it {i_it:4d}:  vis {t_vis:.3f},  xyz {t2-t1:.3f}, w {t3-t2:.3f}  fd = {t4-t3:.3f}  g = {t5-t4:.3f}, coll {t6-t5:.3f}, tot {t6-t0:.3f}")
+    t0 = time.time()
+    i_it += 1
+
 N_eig, intensity_intervals = I_est.infer_parameters()
 print("-I- IFPE N_eig =", N_eig)
 print("-I- intensity intervals =\n", intensity_intervals)
 print("-I- XYZ.shape =", XYZ.shape)
 
 ifpe_e = time.time()
-print(f"#@#IFPE {ifpe_e - ifpe_s:.3f} sec")
+IFPE = ifpe_e - ifpe_s
+IFPE_TPROC = IFPE - IFPE_TVIS - IFPE_TPLOT
+print(f"#@#IFPE {IFPE:.3f} sec")
+print(f"#@#IFPE_NVIS {IFPE_NVIS} vis")
+print(f"#@#IFPE_TVIS {IFPE_TVIS:.3f} sec")
+print(f"#@#IFPE_TPLOT {IFPE_TPLOT:.3f} sec")
+print(f"#@#IFPE_TPROC {IFPE_TPROC:.3f} sec")
 
 
 N_antenna, N_station = W.shape
 print("-I- N_antenna =", N_antenna)
 print("-I- N_station =", N_station)
+
 
 # Imaging
 n_vis_ifim = 0
@@ -114,36 +165,82 @@ imager = bipp.StandardSynthesis(
     xyz_grid[1],
     xyz_grid[2],
     args.precision,
-    args.filter_negative_eigenvalues) # set this one to False to keep all eigenvalues 
+    args.filter_negative_eigenvalues)
 
+IFIM_NVIS  = 0
+IFIM_TVIS  = 0
+IFIM_TPLOT = 0
 i_it = 0
+t0 = time.time()
 for t, f, S in ms.visibilities(channel_id=channel_ids, time_id=time_id_im, column="DATA"):
-    t_it = time.time()
+    t1 = time.time()
+    t_vis = t1 - t0
+    IFIM_TVIS += t_vis
     wl   = constants.speed_of_light / f.to_value(u.Hz)
     XYZ  = ms.instrument(t)
+    t2 = time.time()
     W    = ms.beamformer(XYZ, wl)
-    S, W = measurement_set.filter_data(S, W)
-    plots.plot_gram_matrix(S.data, f"S_{outname}", args.output_directory, "Visibility matrix")
-    plots.plot_gram_matrix(G.data, f"W_{outname}", args.output_directory, "Beam-forming matrix")
-    imager.collect(N_eig, wl, intensity_intervals, W.data, XYZ.data, S.data)
+    t3 = time.time()
+
     n_vis = np.count_nonzero(S.data)
-    n_vis_ifim += n_vis
-    t_it = time.time() - t_it
-    #EO: remove that in production, just to plot G
-    G = gram(XYZ, W, wl)
-    plots.plot_gram_matrix(G.data, f"G_{outname}", args.output_directory, "Gram matrix")
-    if i_it < 3: print(f" ... ifim t_it {i_it} {t_it:.3f} sec")
+    print("n_vis before =", n_vis)
+
+    if args.maxuvw_m:
+        UVW = ms.instrument.baselines(t, uvw=True, field_center=ms.field_center)
+        triu_idx = np.triu_indices(UVW.shape[0], 1)
+        u_min, u_max = np.min(np.abs((UVW[:,:,0])[triu_idx])), np.max(np.abs((UVW[:,:,0])[triu_idx]))
+        v_min, v_max = np.min(np.abs((UVW[:,:,1])[triu_idx])), np.max(np.abs((UVW[:,:,1])[triu_idx]))
+        w_min, w_max = np.min(np.abs((UVW[:,:,2])[triu_idx])), np.max(np.abs((UVW[:,:,2])[triu_idx]))
+        print(f"min, max u: [{u_min:.3f}, {u_max:.3f}] [m], [{u_min/wl:.6f}, {u_max/wl:.6f}] [lambda]")
+        print(f"min, max v: [{v_min:.3f}, {v_max:.3f}] [m], [{v_min/wl:.6f}, {v_max/wl:.6f}] [lambda]")
+        print(f"min, max w: [{w_min:.3f}, {w_max:.3f}] [m], [{w_min/wl:.6f}, {w_max/wl:.6f}] [lambda]")
+
+        #flag_idx = (np.abs(UVW[:,:,2]) / wl) > MAX_W_LAMBDA
+        uvw = np.linalg.norm(UVW, axis=2)
+        print(f"max uvw = {np.max(uvw):.3f} [m], {np.max(uvw)/wl:.3f} [lambda]")
+        flag_idx = uvw > args.maxuvw_m
+        print("flagging ", flag_idx.sum(), "baselines")
+        S.data.setflags(write=1)
+        S.data[flag_idx] = 0
+    
+    S, W = measurement_set.filter_data(S, W)
+    n_vis = np.count_nonzero(S.data)
+    print("n_vis final =", n_vis)
+
+    t4 = time.time()
+    imager.collect(N_eig, wl, intensity_intervals, W.data, XYZ.data, S.data)
+    t5 = time.time()
+    n_vis = np.count_nonzero(S.data)
+    IFIM_NVIS += n_vis
+
+    if i_it == 0:
+        t_plot = time.time()
+        G = gram(XYZ, W, wl)
+        plots.plot_gram_matrix(G.data, f"{args.outname}_G_it{i_it}", args.output_directory, "Gram matrix")
+        plots.plot_visibility_matrix(S.data, f"{args.outname}_S_it{i_it}", args.output_directory, "Visibility matrix")
+        plots.plot_beamweight_matrix(W.data, f"{args.outname}_W_it{i_it}", args.output_directory, "Beam-forming matrix")
+        t_plot = time.time() - t_plot
+        print(f"-W- Plotting took {t_plot:.3f} sec.")
+        IFIM_TPLOT += t_plot
+
+    print("t =", t, t.mjd)
+    print(f"-T- it {i_it:4d}:  vis {t_vis:.3f},  xyz {t2-t1:.3f}, w {t3-t2:.3f}  fd = {t4-t3:.3f}  coll = {t5-t4:.3f}, tot {t5-t0:.3f} -- time = {t.mjd:.6f}")
+    t0 = time.time()
     i_it += 1
 
-#EO: scale by the number of processed epochs
-#I_lsq = np.divide(imager.get("LSQ").reshape((-1, px_w, px_h)), i_it)
 I_lsq = imager.get("LSQ").reshape((-1, px_w, px_h))
-print("-D- I_lsq.shape", I_lsq.shape)
-print("-D- I_lsq =\n", I_lsq)
-
+#print("-D- I_lsq.shape", I_lsq.shape)
+#print("-D- I_lsq =\n", I_lsq)
 #I_std = imager.get("STD").reshape((-1, px_w, px_h))
+
 ifim_e = time.time()
-print(f"#@#IFIM {ifim_e - ifim_s:.3f} sec  NVIS {n_vis_ifim}")
+IFIM = ifim_e - ifim_s
+IFIM_TPROC = IFIM - IFIM_TVIS - IFIM_TPLOT
+print(f"#@#IFIM      {IFIM:.3f} sec")
+print(f"#@#IFIM_NVIS {IFIM_NVIS} vis")
+print(f"#@#IFIM_TVIS {IFIM_TVIS:.3f} sec")
+print(f"#@#IFIM_PLOT {IFIM_TPLOT:.3f} sec")
+print(f"#@#IFIM_PROC {IFIM_TPROC:.3f} sec")
 
 
 ### Sensitivity Field =========================================================
@@ -216,22 +313,29 @@ if os.getenv('BB_EARLY_EXIT') == "1":
 
 
 print("######################################################################")
-"""
-print("-I- intensity_intervals =\n", intensity_intervals, "\n")
-print("-I- xyz_grid:", xyz_grid.shape, "\n", xyz_grid, "\n")
-print("-I- I_lsq:\n", I_lsq, "\n")
+#print("-I- intensity_intervals =\n", intensity_intervals, "\n")
+#print("-I- xyz_grid:", xyz_grid.shape, "\n", xyz_grid, "\n")
+#print("-I- I_lsq:\n", I_lsq, "\n")
 print("-I- I_lsq_eq:\n", I_lsq_eq.data, "\n")
-"""
+
 print("-I- args.output_directory:", args.output_directory)
 
-bipptb.dump_data(I_lsq_eq.data, 'I_lsq_eq_data', args.output_directory)
-bipptb.dump_data(I_lsq_eq.grid, 'I_lsq_eq_grid', args.output_directory)
+#bipptb.dump_data(I_lsq.data,    f"{args.outname}_I_lsq_data",   args.output_directory)
+bipptb.dump_data(I_lsq_eq.data, f"{args.outname}_I_lsq_eq_data", args.output_directory)
+bipptb.dump_data(I_lsq_eq.grid, f"{args.outname}_I_lsq_eq_grid", args.output_directory)
 
-bipptb.dump_json({'ifpe_s': ifpe_s, 'ifpe_e': ifpe_e,
-                  'ifim_s': ifim_s, 'ifim_e': ifim_e,
-                  'sfpe_s': sfpe_s, 'sfpe_e': sfpe_e,
-                  'sfim_s': sfim_s, 'sfim_e': sfim_e,
-                  'tot_s' : jkt0_s, 'tot_e' : jkt0_e,
-                  'n_vis_ifim': n_vis_ifim,
-                  'filename': 'stats.json',
+bipptb.dump_json({'ifpe': ifpe_e - ifpe_s,
+                  'ifim': ifim_e - ifim_s,
+                  'sfpe': sfpe_e - sfpe_s,
+                  'sfim': sfim_e - sfim_s,
+                  'tot' : jkt0_e - jkt0_s,
+                  'ifpe_tvis':  IFPE_TVIS,
+                  'ifpe_tplot': IFPE_TPLOT,
+                  'ifpe_tproc': IFPE_TPROC,
+                  'ifim_tvis':  IFIM_TVIS,
+                  'ifim_tplot': IFIM_TPLOT,
+                  'ifim_tproc': IFIM_TPROC,
+                  'ifpe_nvis': IFPE_NVIS,
+                  'ifim_nvis': IFIM_NVIS,
+                  'filename': f"{args.outname}_stats.json",
                   'out_dir': args.output_directory})
