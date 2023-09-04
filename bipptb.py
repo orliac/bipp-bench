@@ -6,20 +6,29 @@ import numpy
 import json
 from distutils.util import strtobool
 import pickle
+from astropy import units as u
+from astropy.coordinates import Angle
+
 
 def dump_json(info):
-    print(info)
+    #print(info)
     stats = { 
         "timings": {
-            'ifpe': info['ifpe_e'] - info['ifpe_s'],
-            'ifim': info['ifim_e'] - info['ifim_s'],
-            'sfpe': info['sfpe_e'] - info['sfpe_s'],
-            'sfim': info['sfim_e'] - info['sfim_s'],
-            'tot' : info['tot_e']  - info['tot_s'],
-            #'ifpe_vis': t_ifpe_vis,
-            #'ifim_vis': t_ifim_vis,
+            'ifpe': info['ifpe'],
+            'ifim': info['ifim'],
+            'sfpe': info['sfpe'],
+            'sfim': info['sfim'],
+            'tot' : info['tot'],
+            'ifpe_vis': info['ifpe_tvis'],
+            'ifim_vis': info['ifim_tvis'],
+            'ifpe_plot': info['ifpe_tplot'],
+            'ifim_plot': info['ifim_tplot'],
+            'ifpe_proc': info['ifpe_tproc'],
+            'ifim_proc': info['ifim_tproc'],
+
         },
-        "visibilities": {'ifim': info['n_vis_ifim']}
+        "visibilities": {'ifpe': info['ifpe_nvis'],
+                         'ifim': info['ifim_nvis']}
     }
 
     if info['out_dir']:
@@ -112,10 +121,10 @@ def check_args(args_in):
                         required=False, type=int) 
     parser.add_argument("--nlev", help="Number of energy levels in simulation",
                         required=True, type=int)
-    parser.add_argument("--pixw", help="Image width/height in pixels",
-                        required=True, type=int)
-    parser.add_argument("--wsc_scale", help="WSClean scale [arcsec]",
-                        type=int)
+    parser.add_argument("--pixw", help="Image width/height in pixels", required=True, type=int)
+    parser.add_argument("--wsc_scale", help="WSClean scale [arcsec]",  required=False, type=float)
+    parser.add_argument("--fov_deg",   help="Field of view [degree]",  required=False, type=float)
+
     parser.add_argument("--wsc_log", help="WSClean log file")
 
     parser.add_argument("--time_start_idx", help="Index of first epoch to process",
@@ -132,11 +141,15 @@ def check_args(args_in):
                         type=float, default=0.001)
     parser.add_argument("--ms_file", help="Path to MS file to process")
     parser.add_argument("--telescope", help="Observing instrument in use",
-                        choices=['SKALOW', 'LOFAR'], required=True)
+                        choices=['LOFAR', 'MWA', 'SKALOW', ], required=True)
     parser.add_argument("--filter_negative_eigenvalues", help="Switch to filter or not negative eigenvalues",
                         type=lambda x: bool(strtobool(x)), default=True)
     parser.add_argument("--debug", help="Switch to debugging mode (read S from dumped .npy)",
                         default=False, required=False, action='store_true')
+    parser.add_argument("--channel_id", help="ID of channel to process",
+                        required=True, type=int)
+    parser.add_argument("--outname", help="Basename for output files", required=True, type=str)
+    parser.add_argument("--maxuvw_m", help="Maximum uvw baseline length to consider [m]", required=False, type=float)
 
     args = parser.parse_args()
     """
@@ -148,6 +161,9 @@ def check_args(args_in):
     else:
         print("-W- will not dump anything since --outdir was not set")
     """
+
+    if args.wsc_scale == None and args.fov_deg == None:
+        raise Exception("either --wsc_scale or --fov_deg must be set")
 
     assert args.time_start_idx >= 0
     assert args.time_end_idx >= 0
@@ -204,3 +220,6 @@ def stats_image_diff(image1, image2):
     rmse = numpy.sqrt(numpy.sum(diff**2)/numpy.size(diff))
     max_abs = numpy.max(numpy.abs(diff))
     return rmse, max_abs
+
+
+
