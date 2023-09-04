@@ -31,11 +31,13 @@ if __name__ == "__main__":
     print("ref_pix =", ref_pix)
 
     plot = {}
+    sol_colors = {'CASA': 'pink', 'WSClean': 'skyblue', 'Bluebild': 'red'}
     
     for sol in 'CASA', 'WSClean', 'Bluebild':
         data = sky_data[sol]
         #print(data)
         plot[sol] = {}
+        
         for source in data:
             print(source)
             dx = source['simulated']['px'] - ref_pix
@@ -53,31 +55,64 @@ if __name__ == "__main__":
     print(plot['CASA'])
 
     
+    fig, axes = plt.subplots(2,1)
+    fig.set_figwidth(6)
+    #fig.set_figheight(6)
+
     dfs = []
     flats = []
     flats_keys = []
+    colors = []
     for sol in plot:
+        colors.append(sol_colors[sol])
         flat = {}
         for k in plot[sol]:
             flat[k] = pd.Series(plot[sol][k]['loss'])
         df = pd.DataFrame(flat)
-        print("flat =", flat)
-        print("df =", df)
         flats.append(df)
         flats_keys.append(sol)
-    print(flats)
-    print(flats_keys)
-    df = pd.concat(flats, keys=flats_keys, axis=1, names=['a','b'])#.stack(0)
-    df = pd.melt(df)#df.reset_index(level=1, names=['a','b'])
-    print(df)
-    print(df.index.names)
-    
-    #df = pd.melt(df, var_name = 'x', value_name = 'y') 
-    #sns.swarmplot(data=df, x='x', y='y')
-    sns.swarmplot(data=df, x='b', y='value', hue='a')
+    df = pd.concat(flats, keys=flats_keys, axis=1, names=['package','cfov_dist'])#.stack(0)
+    df = pd.melt(df)
+    #print(df)
 
-    plt.gca().set(xlabel='Distance from center of field of view [pixel]',
-                  ylabel='Recovered intensity loss [%]')
+    my_palette = sns.set_palette(sns.color_palette(colors))
     
-    plt.show()
+    sns.swarmplot(data=df, x='cfov_dist', y='value', hue='package',
+                  size=10, palette=my_palette, ax=axes[0])
+
+    axes[0].legend(frameon=False)
+    axes[0].set(xlabel=None)
+    axes[0].set_xticklabels([])
+    axes[0].set_ylabel('Intensity loss [%]', fontsize=12)
+
+    
+    dfs = []
+    flats = []
+    flats_keys = []
+    colors = []
+    for sol in plot:
+        colors.append(sol_colors[sol])
+        flat = {}
+        for k in plot[sol]:
+            flat[k] = pd.Series(plot[sol][k]['dist'])
+        df = pd.DataFrame(flat)
+        flats.append(df)
+        flats_keys.append(sol)
+    df = pd.concat(flats, keys=flats_keys, axis=1, names=['package','cfov_dist'])
+    df = pd.melt(df)
+    #print(df)
+
+    my_palette = sns.set_palette(sns.color_palette(colors))
+    
+    sns.swarmplot(data=df, x='cfov_dist', y='value', hue='package',
+                  size=10, palette=my_palette, ax=axes[1])
+  
+    axes[1].set_xlabel('Distance from center of field of view [pixel]', fontsize=12)
+    axes[1].set_ylabel('Distance to truth [pixel]', fontsize=12)
+    
+    axes[1].get_legend().remove()
+
+    plt.tight_layout()
+    plt.savefig("recovered_vs_simulated.png")
+    #plt.show()
     
