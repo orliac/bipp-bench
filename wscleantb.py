@@ -17,18 +17,22 @@ def get_wsclean_info_from_log(wsclean_log):
         # If natural weighting
         patt = "effective count after weighting:\s*"
         if re.search(patt, line):
+            print("###", line)
+            print("###", re.split(patt, line))
             wsc_gridvis = re.split(patt, line)[-1]
 
         # If uniform gridding
-        patt = "Gridded visibility count:\s*"
-        if re.search(patt, line):
-            wsc_gridvis = re.split(patt, line)[-1]
+        #patt = "Gridded visibility count:\s*"
+        #if re.search(patt, line):
+        #    print("#-#", line)
+        #    wsc_gridvis = re.split(patt, line)[-1]
 
         if re.search("Inversion:", line):
             wsc_t_inv, wsc_t_pred, wsc_t_deconv = re.split("\s*Inversion:\s*|\s*,\s*prediction:\s*|\s*,\s*deconvolution:\s*", line)[-3:]
             t_inv    = datetime.datetime.strptime(wsc_t_inv,   '%H:%M:%S.%f') - datetime.datetime(1900,1,1)
             t_pred   = datetime.datetime.strptime(wsc_t_pred,  '%H:%M:%S') - datetime.datetime(1900,1,1)
             t_deconv = datetime.datetime.strptime(wsc_t_deconv,'%H:%M:%S') - datetime.datetime(1900,1,1)
+
 
     wsc_info  = f"package      = WSClean (wsc)\n"
     wsc_info += f"wsc totvis   = {wsc_totvis}\n"
