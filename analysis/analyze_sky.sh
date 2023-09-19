@@ -12,8 +12,10 @@ source ../$VENV/bin/activate
 
 export PYTHONPATH="..:$PYTHONPATH"
 
+#/work/ska/orliac/debug/oskar_bipp_paper/2048/4/0-600-1-1/SKALOW_nufft_bipp_gpu_1_0_wsc_casa_bb.sky
+
 python analyze_sky.py \
-       --sky_file /work/ska/orliac/debug/oskar_bipp_paper/2048/4/0-600-1-1/SKALOW_nufft_bipp_gpu_1_0_wsc_casa_bb.sky
+       --sky_file /work/ska/orliac/debug/oskar_bipp_paper/2048/4/0-100-1-1/SKALOW_nufft_bipp_gpu_1_0_wsc_casa_bb.sky
 
 deactivate
 source ~/SKA/ska-spack-env/${SPACK_SKA_ENV}/deactivate.sh

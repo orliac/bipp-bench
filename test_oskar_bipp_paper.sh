@@ -1,12 +1,18 @@
 #!/bin/bash
 
 set -e
+
 if [[ -z "${OMP_NUM_THREADS}" ]]; then
     export OMP_NUM_THREADS="${SLURM_CPUS_PER_TASK:-1}"
 fi
 #export NUMEXPR_MAX_THREADS=$OMP_NUM_THREADS
 #export OPEN_BLAS_NUM_THREADS=1
 echo "-I- OMP_NUM_THREADS = ${OMP_NUM_THREADS}"
+
+set -o pipefail  # trace ERR through pipes
+set -o errtrace  # trace ERR through 'time command' and other functions
+set -o nounset   ## set -u : exit the script if you try to use an uninitialised variable
+set -o errexit   ## set -e : exit the script if any statement returns a non-true return value
 
 RUN_OSKAR=1
 RUN_CASA=1
@@ -38,20 +44,34 @@ if [[ $RUN_BIPP == 1 && $INSTALL_PYPELINE == 1 ]]; then
     sh install_pypeline_on_izar.sh orliac
 fi
 
-SPACK_SKA_ENV=bipp-izar-gcc
+SPACK_SKA_ENV=bipp-izar-gcc-dev
 VENV=VENV_IZARGCC
 
 # Keep hard coded for Slurm
 SOFT_DIR=/home/orliac/SKA/epfl-radio-astro/bipp-bench
 
-IN_DIR=/work/ska/papers/bipp/oskar/test/
+#IN_DIR=/work/ska/papers/bipp/oskar/test
 MS_BASENAME_=oskar_bipp_paper
 MS_BASENAME=${MS_BASENAME_}.ms
-
 TELESCOPE="SKALOW"
 
+#IN_DIR=/work/ska/papers/bipp/sim_skalow/data
+#MS_BASENAME_=test64
+#MS_BASENAME=${MS_BASENAME_}.MS
+#TELESCOPE="SKALOW"
+
+#IN_DIR=/work/ska/orliac/RADIOBLOCKS
+#MS_BASENAME_=EOS_21cm_202MHz_10min_1000
+#MS_BASENAME=${MS_BASENAME_}.MS
+#TELESCOPE="SKALOW"
+
+#IN_DIR=/work/ska/papers/bipp/losito/data/
+#MS_BASENAME_=lofar30MHz1_t201806301100_SBL153
+#MS_BASENAME=${MS_BASENAME_}.MS
+#TELESCOPE="LOFAR"
+
 TIME_START_IDX=0
-TIME_END_IDX=600
+TIME_END_IDX=100
 TIME_SLICE_PE=1
 TIME_SLICE_IM=1
 TIME_TAG=${TIME_START_IDX}-${TIME_END_IDX}-${TIME_SLICE_PE}-${TIME_SLICE_IM}
@@ -66,17 +86,27 @@ WSC_SIZE=2048
 #WSC_SIZE=32
 #WSC_SIZE=16
 
-MAXUVW_M=6000000
+#2673.75 [lambda] * 2.99792458 [m/lambda]
+#maxuvw=5078.13 lambda * 2.99792458 [m/lambda]
+MAXUVW_M=9500000
 
-FOV_DEG=7
+#FOV_DEG=7
 
 source ~/SKA/ska-spack-env/${SPACK_SKA_ENV}/activate.sh
 source $VENV/bin/activate
 
-WSC_SCALE=$(python get_scale.py --pixw $WSC_SIZE --fov $FOV_DEG --unit deg)
+#WSC_SCALE=$(python get_scale.py --pixw $WSC_SIZE --fov $FOV_DEG --unit deg)
 
 WSC_SCALE=4
+
 FOV_DEG=$(python get_fov_deg.py --size $WSC_SIZE --scale $WSC_SCALE)
+
+#OUT_DIR=/work/ska/orliac/debug/oskar_bipp_paper/${WSC_SIZE}/${WSC_SCALE}/${TIME_TAG}
+OUT_DIR=/work/ska/papers/bipp/oskar/9_point_sources/${WSC_SIZE}/${WSC_SCALE}/${TIME_TAG}
+[ ! -d $OUT_DIR ] && mkdir -pv $OUT_DIR
+
+IN_DIR=${OUT_DIR}/oskar
+
 
 ### Run OSKAR to produce a MS dataset
 if [[ $RUN_OSKAR == 1 ]]; then
@@ -84,10 +114,10 @@ if [[ $RUN_OSKAR == 1 ]]; then
     export OSKAR_INC_DIR=${ROOT_OSKAR}/inst/include
     export OSKAR_LIB_DIR=${ROOT_OSKAR}/inst/lib
 
-    # Run to install the Python interface
-    python -m pip install 'git+https://github.com/OxfordSKA/OSKAR.git@master#egg=oskarpy&subdirectory=python'
-    python -m pip list
-    
+    # Run if you need to install the Python interface of OSKAR
+    #python -m pip install 'git+https://github.com/OxfordSKA/OSKAR.git@master#egg=oskarpy&subdirectory=python'
+    #python -m pip list
+
     [ ! -d $IN_DIR ] && mkdir -pv $IN_DIR
 
     INPUT_DIRECTORY="ska1low_new.tm"
@@ -104,11 +134,14 @@ if [[ $RUN_OSKAR == 1 ]]; then
     cd $IN_DIR
     python3 $IN_DIR/oskar_sim.py \
             --wsc_size $WSC_SIZE \
+            --wsc_scale $WSC_SCALE \
             --fov_deg $FOV_DEG \
             --num_time_steps $TIME_END_IDX \
             --input_directory $INPUT_DIRECTORY \
             --telescope_lon ${posarr[0]} \
-            --telescope_lat ${posarr[1]}
+            --telescope_lat ${posarr[1]} \
+            --phase_centre_ra_deg 80.0 \
+            --phase_centre_dec_deg -40.0
     cd -
 fi
 
@@ -123,18 +156,12 @@ CHANNEL_ID=0
 BIPP_NLEV=1 # Bluebild number of (positive) energy levels
 BIPP_FNE=0  # Bluebild swith to filter out (=1) or not (=0) negative eigenvalues
 
-OUT_DIR=/work/ska/orliac/debug/oskar_bipp_paper/${WSC_SIZE}/${WSC_SCALE}/${TIME_TAG}
-[ ! -d $OUT_DIR ] && mkdir -pv $OUT_DIR
 
 WSCLEAN_OUT=${OUT_DIR}/${MS_BASENAME}-dirty_wsclean
 WSCLEAN_LOG=${OUT_DIR}/${MS_BASENAME}-dirty_wsclean.log
 
 CASA_OUT=${OUT_DIR}/${MS_BASENAME}-dirty_casa
 CASA_LOG=${OUT_DIR}/${MS_BASENAME}-dirty_casa.log
-
-spack env status
-which python
-python -V
 
 
 if [[ $RUN_CASA == 1 ]]; then
@@ -149,11 +176,6 @@ if [[ $RUN_CASA == 1 ]]; then
         --time_end_idx ${TIME_END_IDX} \
         --time_file ${TIME_FILE}
     #cat ${TIME_FILE}
-
-    spack env status
-    which python
-    python -V
-
     
     casa_start=$(sed -n '1p' ${TIME_FILE})
     casa_end=$(sed -n '2p' ${TIME_FILE})
@@ -186,7 +208,10 @@ if [[ $RUN_CASA == 1 ]]; then
 fi
 
 #        -make-psf \
-
+#        -maxuvw-m ${MAXUVW_M} \
+#        -gridder idg -idg-mode hybrid \
+gridder_opt=''
+#gridder_opt="-gridder idg -idg-mode cpu"
 if [[ $RUN_WSCLEAN == 1 ]]; then
     time wsclean \
         -verbose \
@@ -199,7 +224,7 @@ if [[ $RUN_WSCLEAN == 1 ]]; then
         -name ${WSCLEAN_OUT} \
         -niter 0 \
         -interval ${TIME_START_IDX} ${TIME_END_IDX} \
-        -maxuvw-m ${MAXUVW_M} \
+        $gridder_opt \
         ${MS_FILE} \
         | tee ${WSCLEAN_LOG}
     
@@ -216,7 +241,7 @@ fi
 # ------------------------------------------------------------------------------
 combs=('pypeline_ss_none' 'bipp_ss_cpu' 'bipp_ss_gpu' 'bipp_nufft_cpu' 'bipp_nufft_gpu')
 combs=('bipp_ss_cpu' 'bipp_ss_gpu' 'bipp_nufft_cpu' 'bipp_nufft_gpu')
-combs=('bipp_nufft_gpu' 'bipp_ss_gpu')
+combs=('bipp_nufft_gpu' 'bipp_nufft_cpu' 'bipp_ss_gpu' 'bipp_ss_cpu')
 combs=('bipp_nufft_gpu')
 
 for comb in ${combs[@]}; do
@@ -233,14 +258,15 @@ for comb in ${combs[@]}; do
 
   py_script=ms_${algo}_${package}.py
 
-  echo "=================================================================================="
-  echo  python $py_script $proc_unit
-  echo "=================================================================================="
-  
   if [[ $RUN_BIPP == 1 ]]; then
 
-      #export BIPP_LOG_LEVEL=DEBUG
-          #--debug \
+      echo "=================================================================================="
+      echo  python $py_script $proc_unit
+      echo "=================================================================================="
+        
+     #export BIPP_LOG_LEVEL=DEBUG
+      #--debug \
+#          --maxuvw_m ${MAXUVW_M} \
 
       time python $py_script \
           --ms_file ${MS_FILE} \
@@ -255,30 +281,47 @@ for comb in ${combs[@]}; do
           --sigma ${SIGMA} \
           --time_slice_pe ${TIME_SLICE_PE} --time_slice_im ${TIME_SLICE_IM} \
           --time_start_idx ${TIME_START_IDX} --time_end_idx ${TIME_END_IDX} \
-          --nufft_eps 0.001 \
+          --nufft_eps 0.00001 \
           --algo ${algo} \
           --filter_negative_eigenvalues ${BIPP_FNE} \
           --wsc_log ${WSCLEAN_LOG} \
           --channel_id ${CHANNEL_ID} \
           --outname ${OUTNAME} \
-          --maxuvw_m ${MAXUVW_M} \
-          | tee ${BIPP_LOG}
+          |& tee ${BIPP_LOG}
   fi
 
   if [[ $RUN_BIPP_PLOT == 1 ]]; then
-      python plots.py \
-          --bb_grid  ${OUT_DIR}/${OUTNAME}_I_lsq_eq_grid.npy \
-          --bb_data  ${OUT_DIR}/${OUTNAME}_I_lsq_eq_data.npy \
-          --bb_json  ${OUT_DIR}/${OUTNAME}_stats.json \
-          --wsc_log  ${WSCLEAN_LOG} \
-          --wsc_fits ${WSCLEAN_OUT}-dirty.fits \
-          --casa_log  ${CASA_LOG} \
-          --casa_fits ${CASA_OUT}.image.fits \
-          --outdir   ${OUT_DIR} \
-          --flip_lr \
-          --sky_file ${IN_DIR}/${MS_BASENAME_}.sky \
-          --wsc_size ${WSC_SIZE} --wsc_scale ${WSC_SCALE} \
-          --outname  "${TELESCOPE}_${algo}_${package}_${proc_unit}_${BIPP_NLEV}_${BIPP_FNE}"   ###### adapt here
+
+      sky_file=${IN_DIR}/${MS_BASENAME_}.sky
+      sky_opt=''
+      [ -f $sky_file ] && sky_opt="--sky_file $sky_file"
+      echo sky_opt = $sky_opt
+      
+      outname="${TELESCOPE}_${algo}_${package}_${proc_unit}_${BIPP_NLEV}_${BIPP_FNE}_wsc_casa_bb"
+
+      if [[ 1 == 1 ]]; then
+          python plots.py \
+                 --bb_grid  ${OUT_DIR}/${OUTNAME}_I_lsq_eq_grid.npy \
+                 --bb_data  ${OUT_DIR}/${OUTNAME}_I_lsq_eq_data.npy \
+                 --bb_json  ${OUT_DIR}/${OUTNAME}_stats.json \
+                 --wsc_log  ${WSCLEAN_LOG} \
+                 --wsc_fits ${WSCLEAN_OUT}-dirty.fits \
+                 --casa_log  ${CASA_LOG} \
+                 --casa_fits ${CASA_OUT}.image.fits \
+                 --outdir   ${OUT_DIR} \
+                 --wsc_size ${WSC_SIZE} --wsc_scale ${WSC_SCALE} \
+                 $sky_opt \
+                 --flip_lr \
+                 --outname $outname
+      fi
+      
+      if [ -f $sky_file ]; then
+          python ./analysis/analyze_sky.py \
+                 --sky_file ${OUT_DIR}/${outname}.sky \
+                 --wsc_size ${WSC_SIZE} \
+                 --wsc_scale ${WSC_SCALE} \
+                 --outdir   ${OUT_DIR}
+      fi
 
       echo "-I- plots to be found under ${OUT_DIR}"
   fi

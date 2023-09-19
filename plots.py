@@ -17,9 +17,11 @@ from astropy.wcs import WCS
 from astropy import units as u
 from astropy.coordinates import SkyCoord
 
+def compute_rms(x):
+    return np.sqrt(np.sum(x**2) / x.size)
+
 def compute_rmse(y1, y2):
     return np.linalg.norm(y1 - y2) / len(y1)
-
 
 def compute_rmse_sig(y1, y2, sig):
     assert(y1.shape == y2.shape)
@@ -44,6 +46,12 @@ def read_fits_file(fits_file):
     return header, data
 
 
+def read_json_file(json_file):
+    jf = open(json_file)
+    json_data = json.load(jf)
+    jf.close()
+    return json_data
+
 def get_bipp_info_from_json(bipp_json):
     jf = open(bipp_json)
     json_data = json.load(jf)
@@ -57,7 +65,8 @@ def get_bipp_info_from_json(bipp_json):
 
 
 def my_subplot(plt, wcs, data, vmin, vmax, plot_grid, plot_circles, npix, cmap,
-               sky_filepath, fh_sky_out, locate_max, wsc_size, wsc_scale, solution=None):
+               sky_filepath, fh_sky_out, locate_max, wsc_size, wsc_scale, solution=None,
+               nz_vis=None):
     
     plt.imshow(data, vmin=vmin, vmax=vmax, interpolation ="nearest", origin ="lower",
                aspect=1, cmap=cmap)
@@ -70,8 +79,6 @@ def my_subplot(plt, wcs, data, vmin, vmax, plot_grid, plot_circles, npix, cmap,
     plt.gca().secondary_xaxis('top')
     """
     
-    origin = 0
-
     if plot_grid:
         plt.grid(color='white', ls='solid')
 
@@ -83,111 +90,150 @@ def my_subplot(plt, wcs, data, vmin, vmax, plot_grid, plot_circles, npix, cmap,
         r3 = Circle((half_width_pix, half_width_pix), rad3_pix, edgecolor='black', facecolor='none')
         plt.gca().add_patch(r3)
 
+        
+    # Add text vertically on left hand side of the plot
     npix = data.shape[0]
     assert(npix == wsc_size)
     opix = int(npix * 0.015)
-    plt.gca().text(opix, opix, f"size: {npix} x {npix} pix, ang. res: {wsc_scale:.3f} asec", fontsize=4, rotation='vertical', color='lime')
-        
-    il = 0
-    print(sky_filepath)
-    with open(sky_filepath) as sky_file:
-        src_a = []
-        for src_line in sky_file:
-            #if il%3 != 0:
-            #    il += 1
-            #    continue
-            id, ra, dec, px, py, intensity = src_line.strip().split(" ")
-            id, ra, dec, px, py, intensity = int(id), float(ra), float(dec), float(px), float(py), float(intensity)
-            #print(id, ra, dec, px, py, intensity)
-            sky = SkyCoord(ra=ra*u.degree, dec=dec*u.degree, frame='icrs')
-            pix = wcs.wcs_world2pix(sky.ra, sky.dec, 100000000.0, 1.0, origin)
-            print(f"{id:2d} (!{px}, {py}!) ra = {sky.ra.deg:.4f} {sky.ra.to_string(u.hour)} {dec:.4f} {intensity:.1f} ==>  {pix[0]:.2f} {pix[1]:.2f} in Python imshow / {pix[0] + 1:.2f} {pix[1] + 1:.2f} in .fits")
+    min = np.min(data)
+    max = np.max(data)
+    small_text = f"{npix} x {npix} x {wsc_scale:.3f}\""
+    if nz_vis:
+        small_text += f", {nz_vis} vis."
+    plt.gca().text(opix, opix, small_text, fontsize=4, rotation='vertical', color='lime')
+    mmr_text = f"[{min:.2e}, {max:.2e}]"
+    if solution == None:
+        rms = compute_rms(data)
+        mmr_text += f", RMS={rms:.2e}"
+    plt.gca().text(opix, npix - opix, mmr_text, fontsize=8, rotation='vertical', color='black', backgroundcolor='white',
+                   verticalalignment='top')
 
-            S = int(npix * 0.20)
-            offset = 0
-            if int(pix[1] + S/2) > npix:
-                offset = npix - int(pix[1] + S/2) - int(npix * 0.01)
-            if int(pix[1] - S/2) < 0:
-                offset = 0 - int(pix[1] - S/2) + int(npix * 0.01)
-            axin = plt.gca().inset_axes([int(pix[0] + npix * 0.02), int(pix[1]) - int(S/2 - offset), S, S],
-                                        transform = plt.gca().transData)
-
-            test = axin.imshow(data, vmin=vmin, vmax=vmax, interpolation ="nearest", origin ="lower",
-                               aspect=1, cmap=cmap)
-
-            # Box to highlight zoomed in region
-            x_ref = pix[0]
-            y_ref = pix[1]
-            lhw   = 4.5  
-            rhw   = lhw + 0
-            x1, x2, y1, y2 = x_ref - lhw, x_ref + rhw, y_ref - lhw, y_ref + rhw
-            #print(f"box: {x1}->{x2}, {y1}->{y2}")
-            axin.set_xlim(x1, x2)
-            axin.set_ylim(y1, y2)
-            axin.set_xticks([])
-            axin.set_yticks([])
-            plt.gca().indicate_inset_zoom(axin, edgecolor="black")
-
-            # Mark true position of source
-            axin.plot(pix[0], pix[1], '+', linewidth=0.05, markersize=5, color='fuchsia')
-            
-            # Find pixel of highest intensity in zoomed in region
-            if locate_max:
-                i_max = -1E10
-                x_max, y_max = -1, -1
-                for x in range(int(x1-0.5), int(x2+0.5)):
-                    for y in range(int(y1-0.5), int(y2+0.5)):
-                        # TODO: understand why this is so... 
-                        # !!! INDICES INVERTED !!!! mem layout?
-                        if data[y][x] > i_max: 
-                            x_max, y_max, i_max = x, y, data[y][x]
-                axin.plot(x_max, y_max, 'x', linewidth=0.05, markersize=5, color='black')
-            
-                # Compute distance to true source in pixels
-                dist_x = x_max - pix[0]
-                dist_y = y_max - pix[1]
-                dist = np.sqrt(dist_x * dist_x + dist_y * dist_y)
-                print(f" .. max found on pixel {x_max}, {y_max} with intensity {data[y_max][x_max]}, dist to true position = {dist:.2f} [pix]")
-                json_src = {
-                    'simulated': {
-                        'ra.deg':  f"{sky.ra.deg:.8f}",
-                        'ra.hms':  sky.ra.to_string(u.hour),
-                        'dec.deg': f"{sky.dec.deg:.8f}",
-                        'deg.hms': sky.dec.to_string(u.hour),
-                        'px': px,
-                        'py': py,
-                        'intensity': float(intensity),
-                    },
-                    'recovered': {
-                        'dist.x': dist_x,
-                        'dist.y': dist_y,
-                        'dist': dist,
-                        'px': x_max,
-                        'py': y_max,
-                        'intensity': float(data[y_max][x_max])
-                    }
-                }
-                src_a.append(json_src)
-                il += 1
+    #print("??? wcs =", wcs)
+    
+    # Plot simulated sources if file is provided
+    if sky_filepath:
+        print("-D- sky_filepath:", sky_filepath)
+        with open(sky_filepath) as sky_file:
+            src_a = []
+            for src_line in sky_file:
+                src_line = src_line.strip()
                 
-            #if il > 3: break
+                # Header lines
+                if src_line.startswith('#'):
+                    #print(">>>",src_line,'<<<')
+                    patt = "#phase_centre_deg:\s*"
+                    if re.search(patt, src_line):
+                        ans = re.split("\s+", re.split(patt, src_line)[-1])
+                        sim_ra_deg, sim_dec_deg = float(ans[0]), float(ans[1])
+                        assert(wcs.wcs.crval[0] == sim_ra_deg)
+                        assert(wcs.wcs.crval[1] == sim_dec_deg)
+                    patt = "#crpix:\s*"
+                    if re.search(patt, src_line):
+                        ans = re.split("\s+", re.split(patt, src_line)[-1])
+                        crpix0, crpix1 = float(ans[0]), float(ans[1])
+                        assert(wcs.wcs.crpix[0] == crpix0)
+                        assert(wcs.wcs.crpix[1] == crpix1)
+                    patt = "#origin:\s*"
+                    if re.search(patt, src_line):
+                        ans = re.split("\s+", re.split(patt, src_line)[-1])
+                        origin = float(ans[0])
+                    continue
+                
+                id, ra, dec, px, py, intensity = src_line.strip().split(" ")
+                id, ra, dec, px, py, intensity = int(id), float(ra), float(dec), float(px), float(py), float(intensity)
+                sky = SkyCoord(ra=ra*u.degree, dec=dec*u.degree, frame='icrs')
+                pix_ = wcs.wcs_world2pix(sky.ra, sky.dec, 100000000.0, 1.0, origin)
+                
+                # Make sure we recover what was simulated
+                #print(px, py, pix_)
+                assert(abs(px - pix_[0]) < 1E-5)
+                assert(abs(py - pix_[1]) < 1E-5)
+                
+                S = int(npix * 0.20)
+                offset = 0
+                if int(py + S/2) > npix:
+                    offset = npix - int(py + S/2) - int(npix * 0.01)
+                if int(py - S/2) < 0:
+                    offset = 0 - int(py - S/2) + int(npix * 0.01)
+                axin = plt.gca().inset_axes([int(px + npix * 0.02), int(py) - int(S/2 - offset), S, S], transform = plt.gca().transData)
 
-        # Print info on resolution on the picture
-        
-        
-        #if fh_sky_out:
-        #    json_obj = json.dumps({solution: src_a}, indent=4)
-        #    fh_sky_out.write(json_obj)
-        return src_a
+                test = axin.imshow(data, vmin=vmin, vmax=vmax, interpolation ="nearest", origin ="lower", aspect=1, cmap=cmap)
+
+                # Box to highlight zoomed in region (-1 as in Python context)
+                x_ref = px - 1
+                y_ref = py - 1
+                lhw   = 4.5  
+                rhw   = lhw + 0
+                x1, x2, y1, y2 = x_ref - lhw, x_ref + rhw, y_ref - lhw, y_ref + rhw
+                #print(f"box: {x1}->{x2}, {y1}->{y2}")
+                axin.set_xlim(x1, x2)
+                axin.set_ylim(y1, y2)
+                axin.set_xticks([])
+                axin.set_yticks([])
+                plt.gca().indicate_inset_zoom(axin, edgecolor="black")
+
+                # Mark true position of source
+                axin.plot(x_ref, y_ref, '+', linewidth=0.05, markersize=5, color='fuchsia')
+            
+                # Find pixel of highest intensity in zoomed in region
+                if locate_max:
+                    i_max = -1E10
+                    x_max, y_max = -1, -1
+                    for x in range(int(x1+0.5), int(x2-0.5)):
+                        for y in range(int(y1+0.5), int(y2-0.5)):
+                            # TODO: understand why this is so... 
+                            # !!! INDICES INVERTED !!!! mem layout?
+                            if data[y][x] > i_max: 
+                                x_max, y_max, i_max = x, y, data[y][x]
+                    #print("plotting max at", x_max, y_max)
+                    axin.plot(x_max, y_max, 'x', linewidth=0.05, markersize=5, color='black')
+                    max_intensity = float(data[y_max][x_max])
+
+                    # Python -> fits
+                    x_max += 1
+                    y_max += 1
+            
+                    # Compute distance to true source in pixels
+                    dist_x = x_max - px
+                    dist_y = y_max - py
+                    dist = np.sqrt(dist_x * dist_x + dist_y * dist_y)
+                    #print(f" .. max found on pixel {x_max}, {y_max} with intensity {max_intensity:5.3f}, dist to true position = {dist:.2f} [pixel]")
+                    json_src = {
+                        'simulated': {
+                            'ra.deg':  f"{sky.ra.deg:.8f}",
+                            'ra.hms':  sky.ra.to_string(u.hour),
+                            'dec.deg': f"{sky.dec.deg:.8f}",
+                            'deg.hms': sky.dec.to_string(u.hour),
+                            'px': px,
+                            'py': py,
+                            'intensity': float(intensity),
+                        },
+                        'recovered': {
+                            'dist.x': float(f"{dist_x:.3f}"),
+                            'dist.y': float(f"{dist_y:.3f}"),
+                            'dist': float(f"{dist:.3f}"),
+                            'px': float(f"{x_max:.3f}"),
+                            'py': float(f"{y_max:.3f}"),
+                            'intensity': float(f"{max_intensity:.3f}")
+                        }
+                    }
+                    src_a.append(json_src)
+
+                #break
+            
+            #if fh_sky_out:
+            #    json_obj = json.dumps({solution: src_a}, indent=4)
+            #    fh_sky_out.write(json_obj)
+            return src_a
 
 
 def plot_wsc_casa_bb(wsc_fits, wsc_log, casa_fits, casa_log, bb_grid, bb_data, bb_json,
                      outdir, outname, sky_file, wsc_size, wsc_scale):
 
     # Define output files
-    outname += f"_wsc_casa_bb"
     basename = os.path.join(outdir, outname)
-    file_png  = basename + '.png'
+    file_png      = basename + '.png'
+    file_png_low  = basename + '_low.png'
     file_misc = basename + '.misc'
     file_json = basename + '.json'
     fh_sky_out = None
@@ -197,18 +243,24 @@ def plot_wsc_casa_bb(wsc_fits, wsc_log, casa_fits, casa_log, bb_grid, bb_data, b
         print(" => sky_out:", sky_out)
         fh_sky_out = open(sky_out, "w")
 
-    bb_info = get_bipp_info_from_json(bb_json)
 
+    bb_json_info = read_json_file(bb_json)
+    bb_vis = bb_json_info['visibilities']['ifim']
+    bb_info = get_bipp_info_from_json(bb_json)
+    
     if not os.path.isfile(casa_log):
         raise Warning(f"{casa_log} not found. Abort plot.")
         return
 
-    _, _, casa_info = casatb.get_casa_info_from_log(casa_log)
-    _, _, _, _, _, wsc_info = wscleantb.get_wsclean_info_from_log(wsc_log)
-    print(bb_info)
-    print(casa_info)
-    print(wsc_info)
+    casa_vis, _, casa_info = casatb.get_casa_info_from_log(casa_log)
+    wsc_tot_vis, wsc_grid_vis, _, _, _, wsc_info = wscleantb.get_wsclean_info_from_log(wsc_log)
+    #print(bb_info)
+    #print(casa_info)
+    #print(wsc_info)
 
+    print(casa_vis, wsc_grid_vis, bb_vis)
+    
+    
     # !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
     #  WARNING! Hacking wsclean fits file to injec bipp's data
     # !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
@@ -261,11 +313,11 @@ def plot_wsc_casa_bb(wsc_fits, wsc_log, casa_fits, casa_log, bb_grid, bb_data, b
 
     zmin = min(wsc_min, casa_min, bb_min)
     zmax = max(wsc_max, casa_max, bb_max)
-    print(f"-D- range = [{zmin:.6e}, {zmax:.6e}]")
+    print(f"-D- overall sol range  = [{zmin:.6e}, {zmax:.6e}]")
     max_absz = max(abs(zmin), abs(zmax))
     dmin = min(np.amin(diff_casa_wsc), np.amin(diff_bb_wsc), np.amin(diff_bb_casa))
     dmax = max(np.amax(diff_casa_wsc), np.amax(diff_bb_wsc), np.amax(diff_bb_casa))
-    print(f"-D- diff  = [{dmin:.6e}, {dmax:.6e}]")
+    print(f"-D- overall diff range  = [{dmin:.6e}, {dmax:.6e}]")
     abs_max = max(abs(dmin), abs(dmax))
     print(f"-D- max abs diff = {abs_max:.6e}")
 
@@ -302,7 +354,8 @@ def plot_wsc_casa_bb(wsc_fits, wsc_log, casa_fits, casa_log, bb_grid, bb_data, b
     ### CASA
     plt.subplot(231, projection=wcs, slices=('x', 'y', 0, 0))
     casa_sky = my_subplot(plt, wcs, casa_data, vmin, vmax, plot_grid, plot_circles, npix, 'viridis',
-                          sky_file, fh_sky_out, locate_max, wsc_size, wsc_scale, solution='CASA')
+                          sky_file, fh_sky_out, locate_max, wsc_size, wsc_scale, solution='CASA',
+                          nz_vis=casa_vis)
     plt.title('(a) CASA', pad=14)
     plt.gca().coords[0].set_axislabel(" ")
     plt.gca().coords[0].set_ticklabel_visible(True)
@@ -311,7 +364,8 @@ def plot_wsc_casa_bb(wsc_fits, wsc_log, casa_fits, casa_log, bb_grid, bb_data, b
     ### WSClean
     plt.subplot(232, projection=wcs, slices=('x', 'y', 0, 0))
     wsc_sky = my_subplot(plt, wcs, wsc_data, vmin, vmax, plot_grid, plot_circles, npix, 'viridis',
-                         sky_file, fh_sky_out, locate_max, wsc_size, wsc_scale, solution='WSClean')
+                         sky_file, fh_sky_out, locate_max, wsc_size, wsc_scale, solution='WSClean',
+                         nz_vis=wsc_grid_vis)
     plt.title('(b) WSClean', pad=14)
     plt.gca().coords[0].set_axislabel(" ")
     plt.gca().coords[0].set_ticklabel_visible(True)
@@ -321,7 +375,8 @@ def plot_wsc_casa_bb(wsc_fits, wsc_log, casa_fits, casa_log, bb_grid, bb_data, b
     ### Bluebild
     plt.subplot(233, projection=wcs, slices=('x', 'y', 0, 0))
     bb_sky = my_subplot(plt, wcs, bb_data, vmin, vmax, plot_grid, plot_circles, npix, 'viridis',
-                        sky_file, fh_sky_out, locate_max, wsc_size, wsc_scale, solution='Bluebild')
+                        sky_file, fh_sky_out, locate_max, wsc_size, wsc_scale, solution='Bluebild',
+                        nz_vis=bb_vis)
     plt.title('(c) Bluebild', pad=14)
     plt.gca().coords[0].set_axislabel(" ")
     plt.gca().coords[0].set_ticklabel_visible(True)
@@ -340,10 +395,12 @@ def plot_wsc_casa_bb(wsc_fits, wsc_log, casa_fits, casa_log, bb_grid, bb_data, b
         json_obj = json.dumps({'CASA':     casa_sky,
                                'WSClean':  wsc_sky,
                                'Bluebild': bb_sky,
-                               'ref_pix': ref_pix},  indent=4)
+                               'ref_px':   wcs.wcs.crpix[0],
+                               'ref_py':   wcs.wcs.crpix[1]},  indent=4)
         fh_sky_out.write(json_obj)
         fh_sky_out.close()
-
+        
+        
     ### Diff plots
     
     plot_grid = False
@@ -383,6 +440,8 @@ def plot_wsc_casa_bb(wsc_fits, wsc_log, casa_fits, casa_log, bb_grid, bb_data, b
     
     plt.savefig(file_png, bbox_inches='tight', dpi=1400)
     print("-I-", file_png)
+    plt.savefig(file_png_low, bbox_inches='tight', dpi=400)
+    print("-I-", file_png_low)
 
     casa_wsc_txt, casa_wsc_json = diff_stats_txt(casa_data, 'casa', wsc_data,  'wsc')
     bb_wsc_txt,   bb_wsc_json   = diff_stats_txt(bb_data,   'bb',   wsc_data,  'wsc')
@@ -1649,11 +1708,12 @@ if __name__ == "__main__":
     parser.add_argument('--outname',   help='Plots naming prefix',     required=True)
     parser.add_argument('--outdir',    help='Plots output directory',  required=True)
     parser.add_argument('--wsc_size',  help='WSClean size paramater',  required=True, type=int)
-    parser.add_argument('--wsc_scale', help='WSClean scale parameter', required=True, type=int)
+    parser.add_argument('--wsc_scale', help='WSClean scale parameter', required=True, type=float)
     parser.add_argument('--flip_lr',   help='Flip image left-rigth', action='store_true')
     parser.add_argument('--flip_ud',   help='Flip image up-down',    action='store_true')
     parser.add_argument('--sky_file',  help='Simulated point sources RA and DEC')
     args = parser.parse_args()
+    print(args)
 
     # Handle non-mandatory sky file (typically OSKAR simulated point sources)
     sky_file = args.sky_file if args.sky_file else None

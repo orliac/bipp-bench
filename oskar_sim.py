@@ -14,17 +14,20 @@ import astropy.units as u
 # Parse command line argument
 parser = argparse.ArgumentParser(description='Running OSKAR simulation')
 parser.add_argument('--wsc_size',   help='WSC size [pixel]', required=True, type=int)
-#parser.add_argument('--wsc_scale', help="WSC scale [arcsec]", required=True, type=float)
+parser.add_argument('--wsc_scale', help="WSC scale [arcsec]", required=True, type=float)
 parser.add_argument('--fov_deg', help="Field of view [degree]", required=True, type=float)
 parser.add_argument('--num_time_steps', help="Number of time steps", required=True, type=int)
 parser.add_argument('--input_directory', help=".tm input directory", required=True)
 parser.add_argument('--telescope_lon', help="Longitude of telescope", required=True, type=float)
 parser.add_argument('--telescope_lat', help="Latitude of telescope", required=True, type=float)
+parser.add_argument('--phase_centre_ra_deg',  help="Phase centre's right ascension [deg]", required=True, type=float)
+parser.add_argument('--phase_centre_dec_deg', help="Phase centre's declination [deg] ",    required=True, type=float)
 
 args = parser.parse_args()
 
 
 # Basic settings. (Note that the sky model is set up later.)
+#        "correlation_type": 'both'
 params = {
     "simulator": {
         "use_gpus": False,
@@ -34,8 +37,8 @@ params = {
         "num_channels": 1,
         "start_frequency_hz": 100e6,
         "frequency_inc_hz": 20e6,
-        "phase_centre_ra_deg": 80,
-        "phase_centre_dec_deg": -40,
+        "phase_centre_ra_deg": args.phase_centre_ra_deg,
+        "phase_centre_dec_deg": args.phase_centre_dec_deg,
         "num_time_steps": args.num_time_steps,
         "start_time_utc": "2000-01-01T12:00:00.000",
         "length": "06:00:00.000"
@@ -85,14 +88,28 @@ for t_obs in OBS:
 size = args.wsc_size
 assert(size % 8 == 0)
 
+if args.wsc_scale == 4:
+    cdelt1 = -0.0011111111
+elif args.wsc_scale == 4.5:
+    cdelt1 = -0.0012500000
+elif args.wsc_scale == 8:
+    cdelt1 = -0.0022222222
+elif args.wsc_scale == 16:
+    cdelt1 = -0.0044444444
+elif args.wsc_scale == 32:
+    cdelt1 = -0.0088888888
+else:
+    raise Exception("Unknown value for args.wsc_scale")
 
 # Set up WCS projection
 # ---------------------
 from astropy import wcs
 w = wcs.WCS(naxis=2)
-w.wcs.crpix = [float(size / 2 + 1.0), float(size / 2 + 1.0)]
-w.wcs.cdelt = numpy.array([-0.00111111111111111, 0.00111111111111111])
-w.wcs.crval = [80.0, -40.0]
+origin = 1
+print("#### origin =", origin)
+w.wcs.crpix = [float(size / 2 + origin), float(size / 2 + origin)]
+w.wcs.cdelt = numpy.array([cdelt1, -cdelt1])
+w.wcs.crval = [args.phase_centre_ra_deg, args.phase_centre_dec_deg]
 w.wcs.ctype = ["RA---SIN", "DEC--SIN"]
 print(w)
 
@@ -101,25 +118,29 @@ fn = os.path.splitext(fn)[0] + '.sky'
 f = open(fn, "w")
 i = 0
 sky_data = []
-origin = 0
 
-eighths = (1, 4, 7)
-for i in eighths:
-    assert(((size / 8) * i) % 2 == 0)
-    for j in eighths:
-        x = i * size / 8 #+ 0.5
-        y = j * size / 8 #+ 0.5
-        sky = w.wcs_pix2world([[x, y]], origin)[0]
-        ra, dec = sky[0], sky[1]
-        intensity = 1.0 #+ i/10
-        print(f"{i} {x} {y} {ra:.8f} {dec:.8f}")
-        sky_data.append([ra, dec, intensity])
-        f.write(f"{i} {ra:.8f} {dec:.8f} {x} {y} {intensity:.3f}\n")
+# Get pixel coordinates of center of field of view
+cfov_x, cfov_y = w.wcs_world2pix([w.wcs.crval], origin)[0]
+print(f"-I- pixel coordinates of center of Fov: {cfov_x} {cfov_y} from {w.wcs.crval}")
+
+f.write(f"#phase_centre_deg: {args.phase_centre_ra_deg} {args.phase_centre_dec_deg}\n")
+f.write(f"#crpix: {w.wcs.crpix[0]} {w.wcs.crpix[1]}\n")
+f.write(f"#origin: {origin}\n")
+
+sdp = 3 * size / 8 # axis source distance in pixels
+
+sources = ((cfov_x - sdp, cfov_y + sdp), (cfov_x, cfov_y + sdp), (cfov_x + sdp, cfov_y + sdp),
+           (cfov_x - sdp, cfov_y),       (cfov_x, cfov_y),       (cfov_x + sdp, cfov_y),
+           (cfov_x - sdp, cfov_y - sdp), (cfov_x, cfov_y - sdp), (cfov_x + sdp, cfov_y - sdp))
+
+for (x, y) in sources:
+    sky = w.wcs_pix2world([[x, y]], origin)[0]
+    ra, dec = sky[0], sky[1]
+    intensity = 1.0 #+ i/10
+    print(f"{i} {x} {y} {ra:.8f} {dec:.8f}")
+    sky_data.append([ra, dec, intensity])
+    f.write(f"{i} {ra:.8f} {dec:.8f} {x} {y} {intensity:.3f}\n")
 f.close
-
-# Check point
-world = w.wcs_pix2world([[0, 0]], 0)
-print("Check point [0, 0] pix =>", world)
 
 
 # Set the sky model and run the simulation.
