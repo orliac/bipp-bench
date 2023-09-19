@@ -30,7 +30,8 @@ args = bipptb.check_args(sys.argv)
 # For reproducible results
 np.random.seed(0)
 
-np.set_printoptions(precision=3, linewidth=120)
+np.set_printoptions(precision=6, linewidth=120)
+
 
 # Create context with selected processing unit.
 # Options are "AUTO", "CPU" and "GPU".
@@ -76,15 +77,19 @@ print("-I- xyz_grid.shape =", xyz_grid.shape, "(after reshaping in SS)")
 time_id_pe = slice(args.time_start_idx, args.time_end_idx, args.time_slice_pe)
 time_id_im = slice(args.time_start_idx, args.time_end_idx, args.time_slice_im)
 
-#MAX_W_LAMBDA = 100 # From WSC?
-
+USE_FNE=False # New: False, Old: True
 
 ### Intensity Field ===========================================================
 
 # Parameter Estimation
 ifpe_s = time.time()
-I_est = bb_pe.IntensityFieldParameterEstimator(args.nlev, sigma=args.sigma, ctx=ctx,
-                                               filter_negative_eigenvalues=args.filter_negative_eigenvalues)
+
+if USE_FNE:
+    I_est = bb_pe.IntensityFieldParameterEstimator(args.nlev, sigma=args.sigma, ctx=ctx, filter_negative_eigenvalues=args.filter_negative_eigenvalues)
+else:
+    assert(args.sigma == 1.0)
+    I_est = bb_pe.IntensityFieldParameterEstimator(args.nlev, sigma=args.sigma, ctx=ctx)
+    
 IFPE_NVIS  = 0
 IFPE_TVIS  = 0
 IFPE_TPLOT = 0
@@ -99,28 +104,8 @@ for t, f, S in ms.visibilities(channel_id=channel_ids, time_id=time_id_pe, colum
     t2   = time.time()
     W    = ms.beamformer(XYZ, wl)
     t3   = time.time()
-
-    n_vis = np.count_nonzero(S.data)
-    print("n_vis before =", n_vis)
-
-    """
-    UVW = ms.instrument.baselines(t, uvw=True, field_center=ms.field_center)
-    print("min, max w =", np.min(UVW[:,:,2]/wl), np.max(UVW[:,:,2]/wl))
-    flag_idx = (np.abs(UVW[:,:,2]) / wl) > MAX_W_LAMBDA
-    print("flagging ", flag_idx.sum(), "baselines")
-    S.data.setflags(write=1)
-    S.data[flag_idx] = 0
-    n_vis = np.count_nonzero(S.data)
-    print("n_vis before =", n_vis)
-    """
-
     S, W = measurement_set.filter_data(S, W)
     n_vis = np.count_nonzero(S.data)
-    print("n_vis final=", n_vis)
-
-    #print((np.absolute(S.data) < 1E-6).sum())
-    #print((np.sqrt(S.data.real ** 2 + S.data.imag ** 2) < 1E-3).sum())
-
     IFPE_NVIS += n_vis
     t4 = time.time()
     G = gram(XYZ, W, wl)
@@ -145,27 +130,44 @@ print(f"#@#IFPE_TVIS {IFPE_TVIS:.3f} sec")
 print(f"#@#IFPE_TPLOT {IFPE_TPLOT:.3f} sec")
 print(f"#@#IFPE_TPROC {IFPE_TPROC:.3f} sec")
 
-
 N_antenna, N_station = W.shape
 print("-I- N_antenna =", N_antenna)
 print("-I- N_station =", N_station)
 
+if not USE_FNE:
+    print(f"-W- Using negative eigenvalues! Adding extra negative interval and setting N_eig to S.data.shape[0] = {S.data.shape[0]}!")
+    intensity_intervals = np.append(intensity_intervals, [[np.finfo("f").min, -np.finfo("f").tiny]], axis=0)
+    N_eig = S.data.shape[0]
+print("-I- intensity intervals =\n", intensity_intervals)
+print("-I- N_eig =\n", N_eig)
 
 # Imaging
 n_vis_ifim = 0
 ifim_s = time.time()
 ifim_vis = 0
-imager = bipp.StandardSynthesis(
-    ctx,
-    N_antenna,
-    N_station,
-    intensity_intervals.shape[0],
-    ["LSQ"], #"STD"],
-    xyz_grid[0],
-    xyz_grid[1],
-    xyz_grid[2],
-    args.precision,
-    args.filter_negative_eigenvalues)
+
+if USE_FNE:
+    imager = bipp.StandardSynthesis(
+        ctx,
+        N_antenna,
+        N_station,
+        intensity_intervals.shape[0],
+        ["LSQ"], #"STD"],
+        xyz_grid[0],
+        xyz_grid[1],
+        xyz_grid[2],
+        args.precision, args.filter_negative_eigenvalues)
+else:
+    imager = bipp.StandardSynthesis(
+        ctx,
+        N_antenna,
+        N_station,
+        intensity_intervals.shape[0],
+        ["LSQ"], #"STD"],
+        xyz_grid[0],
+        xyz_grid[1],
+        xyz_grid[2],
+        args.precision)
 
 IFIM_NVIS  = 0
 IFIM_TVIS  = 0
@@ -181,32 +183,7 @@ for t, f, S in ms.visibilities(channel_id=channel_ids, time_id=time_id_im, colum
     t2 = time.time()
     W    = ms.beamformer(XYZ, wl)
     t3 = time.time()
-
-    n_vis = np.count_nonzero(S.data)
-    print("n_vis before =", n_vis)
-
-    if args.maxuvw_m:
-        UVW = ms.instrument.baselines(t, uvw=True, field_center=ms.field_center)
-        triu_idx = np.triu_indices(UVW.shape[0], 1)
-        u_min, u_max = np.min(np.abs((UVW[:,:,0])[triu_idx])), np.max(np.abs((UVW[:,:,0])[triu_idx]))
-        v_min, v_max = np.min(np.abs((UVW[:,:,1])[triu_idx])), np.max(np.abs((UVW[:,:,1])[triu_idx]))
-        w_min, w_max = np.min(np.abs((UVW[:,:,2])[triu_idx])), np.max(np.abs((UVW[:,:,2])[triu_idx]))
-        print(f"min, max u: [{u_min:.3f}, {u_max:.3f}] [m], [{u_min/wl:.6f}, {u_max/wl:.6f}] [lambda]")
-        print(f"min, max v: [{v_min:.3f}, {v_max:.3f}] [m], [{v_min/wl:.6f}, {v_max/wl:.6f}] [lambda]")
-        print(f"min, max w: [{w_min:.3f}, {w_max:.3f}] [m], [{w_min/wl:.6f}, {w_max/wl:.6f}] [lambda]")
-
-        #flag_idx = (np.abs(UVW[:,:,2]) / wl) > MAX_W_LAMBDA
-        uvw = np.linalg.norm(UVW, axis=2)
-        print(f"max uvw = {np.max(uvw):.3f} [m], {np.max(uvw)/wl:.3f} [lambda]")
-        flag_idx = uvw > args.maxuvw_m
-        print("flagging ", flag_idx.sum(), "baselines")
-        S.data.setflags(write=1)
-        S.data[flag_idx] = 0
-    
     S, W = measurement_set.filter_data(S, W)
-    n_vis = np.count_nonzero(S.data)
-    print("n_vis final =", n_vis)
-
     t4 = time.time()
     imager.collect(N_eig, wl, intensity_intervals, W.data, XYZ.data, S.data)
     t5 = time.time()
@@ -223,8 +200,7 @@ for t, f, S in ms.visibilities(channel_id=channel_ids, time_id=time_id_im, colum
         print(f"-W- Plotting took {t_plot:.3f} sec.")
         IFIM_TPLOT += t_plot
 
-    print("t =", t, t.mjd)
-    print(f"-T- it {i_it:4d}:  vis {t_vis:.3f},  xyz {t2-t1:.3f}, w {t3-t2:.3f}  fd = {t4-t3:.3f}  coll = {t5-t4:.3f}, tot {t5-t0:.3f} -- time = {t.mjd:.6f}")
+    print(f"-T- it {i_it:4d} mjd {t.mjd:.7f}:  vis {t_vis:.3f},  xyz {t2-t1:.3f}, w {t3-t2:.3f}  fd = {t4-t3:.3f}  coll = {t5-t4:.3f}, tot {t5-t0:.3f} -- time = {t.mjd:.6f}")
     t0 = time.time()
     i_it += 1
 
@@ -317,7 +293,6 @@ print("######################################################################")
 #print("-I- xyz_grid:", xyz_grid.shape, "\n", xyz_grid, "\n")
 #print("-I- I_lsq:\n", I_lsq, "\n")
 print("-I- I_lsq_eq:\n", I_lsq_eq.data, "\n")
-
 print("-I- args.output_directory:", args.output_directory)
 
 #bipptb.dump_data(I_lsq.data,    f"{args.outname}_I_lsq_data",   args.output_directory)
