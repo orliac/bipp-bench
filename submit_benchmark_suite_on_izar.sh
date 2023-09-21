@@ -44,7 +44,7 @@ MS_FILE=${IN_DIR}/${MS_BASENAME}
 SLURM_OPTS="--partition=build|--gres=gpu:1|--time=00-01:00:00|--cpus-per-task=20|--mem=80G"
 
 CLUSTER=izar
-BENCH_NAME=bipp-paper
+BENCH_NAME=bipp-paper-2
 PIPELINE=ms # to be expanded as: ms_{algo}_{package}
 
 COMMON="--bench-name $BENCH_NAME"

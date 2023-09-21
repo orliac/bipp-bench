@@ -15,14 +15,12 @@ ARGUMENT_LIST=(
     "slurm-opts"
     "algo"
     "telescope"
-    "ms-file"
     "time-start-idx"
     "time-end-idx"
     "time-slice-pe"
     "time-slice-im"
     "sigma"
-    #"wsc_scale"
-    "fov_deg"
+    "wsc_scale"
     "precision"
     "filter_negative_eigenvalues"
     "channel_id"
@@ -52,14 +50,12 @@ do
         --slurm-opts)     slurm_opts="$2";     shift;;
         --algo)           algo="$2";           shift;;
         --telescope)      telescope="$2";      shift;;
-        --ms-file)        ms_file="$2";        shift;;
         --time-start-idx) time_start_idx="$2"; shift;;
         --time-end-idx)   time_end_idx="$2";   shift;;
         --time-slice-pe)  time_slice_pe="$2";  shift;;
         --time-slice-im)  time_slice_im="$2";  shift;;
         --sigma)          sigma="$2";          shift;;
-        #--wsc_scale)      wsc_scale="$2";      shift;;
-        --fov_deg)        fov_deg="$2";      shift;;
+        --wsc_scale)      wsc_scale="$2";      shift;;
         --precision)      precision="$2";      shift;;
         --filter_negative_eigenvalues) fne="$2"; shift;;
         --channel_id)     channel_id="$2";        shift;;
@@ -84,7 +80,8 @@ done
 : ${telescope:?Missing mandatory --telescope option}
 : ${fne:?Missing mandatory --filter_negative_eigenvalues option}
 : ${channel_id:?Missing mandatory --channel_id option}
-: ${fov_deg:?Missing mandatory --fov_deg option}
+#: ${fov_deg:?Missing mandatory --fov_deg option}
+: ${wsc_scale:?Missing mandatory --wsc_scale option}
 
 if [[ $sigma < 0.0 ]] || [[ $sigma > 1.0 ]]; then
     echo "-E- Invalid value for sigma ($sigma). Must be > 0.0 and < 1.0"
@@ -141,21 +138,24 @@ outname=${telescope}_${package}_${algo}_${proc_unit}_${fne}
 #
 module purge
 module load gcc python
-out_dir="$outdir/$bench_name/$package/$cluster/$proc_unit/$compiler/$precision/$algo"
+out_dir=${outdir}/${bench_name}/${package}/${cluster}/${proc_unit}/${compiler}/${precision}/${algo}
 [ ! -d $out_dir ] && mkdir -pv $out_dir
 in_file="$out_dir/benchmark.in"
-#--wsc_scale=$wsc_scale \
+
 python generate_benchmark_input_file.py \
     --pipeline=$pipeline \
     --bench_name=$bench_name --proc_unit=$proc_unit \
     --compiler=$compiler --cluster=$cluster --precision=$precision --package=$package \
-    --in_file=$in_file --out_dir=$out_dir --ms_file=$ms_file \
+    --in_file=$in_file --out_dir=${out_dir} \
     --time_start_idx=$time_start_idx --time_end_idx=$time_end_idx \
     --time_slice_pe=$time_slice_pe --time_slice_im=$time_slice_im \
-    --sigma=$sigma --fov_deg=$fov_deg \
+    --sigma=$sigma \
+    --wsc_scale=$wsc_scale \
     --algo=$algo --telescope=$telescope --filter_negative_eigenvalues=$fne \
     --channel_id=$channel_id --outname=$outname
 
+
+    
 [ $? -eq 0 ] || (echo "-E- $ python generate_benchmark_input_file.py ... failed" && exit 1)
 echo "-I- Generated input file $in_file"
 
@@ -183,13 +183,14 @@ cp -v casa_log_to_json.py                $out_dir
 cp -v add_time_stats_to_bluebild_json.py $out_dir
 cp -v get_ms_timerange.py                $out_dir
 cp -v get_scale.py                       $out_dir
-cp -r $ms_file $out_dir
+#cp -r $ms_file                           $out_dir
+cp -v oskar_sim.py                       $out_dir
 
 cd $out_dir
 
 slurm_opts=$(sed "s/|/ /g" <<< $slurm_opts)
 slurm_opts="$slurm_opts --array 0-${NJOBS}"
-[ "$cluster" == "izar" ] && slurm_opts="$slurm_opts%8" ### Adapt here for max simulatneous jobs
+[ "$cluster" == "izar" ] && slurm_opts="$slurm_opts%16" ### Adapt here for max simulatneous jobs
 #[ "$cluster" == "izar" ] && slurm_opts="$slurm_opts%10" ### Adapt here for max simulatneous jobs
 echo
 echo "slurm_opts >>$slurm_opts<<"

@@ -21,7 +21,11 @@ def compute_rms(x):
     return np.sqrt(np.sum(x**2) / x.size)
 
 def compute_rmse(y1, y2):
-    return np.linalg.norm(y1 - y2) / len(y1)
+    assert(y1.shape == y2.shape)
+    assert(y1.shape[0] == y1.shape[1])
+    diff = y1 - y2
+    rmse = np.sqrt(np.sum(np.square(diff)) / diff.size)
+    return rmse
 
 def compute_rmse_sig(y1, y2, sig):
     assert(y1.shape == y2.shape)

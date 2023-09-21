@@ -91,12 +91,23 @@ fi
 
 #export BIPP_CMAKE_ARGS="-DBIPP_BUILD_TYPE=Debug"
 cuda_arch="70;80"
-cpu_arch="skylake-avx512"
-export BIPP_CMAKE_ARGS="-DBIPP_BUILD_TYPE=Debug \
-                        -DCMAKE_CXX_FLAGS_DEBUG=\"-g -O3 -march=${cpu_arch} -mprefer-vector-width=512 -ftree-vectorize\" \
-                        -DCMAKE_C_FLAGS_DEBUG=\"-g -O3 -march=${cpu_arch} -mprefer-vector-width=512 -ftree-vectorize\" \
-                        -DCMAKE_CUDA_ARCHITECTURES=${cuda_arch} \
-                        -DCMAKE_CUDA_FLAGS_DEBUG=\"-g -lineinfo --compiler-options=\"-march=${cpu_arch}\"\""
+cpu_arch="cascadelake"
+
+production_mode=1
+
+if [[ $production_mode == 1 ]]; then
+    echo "@@@ compiling BIPP in production mode @@@"
+    export BIPP_CMAKE_ARGS="-DBIPP_BUILD_TYPE=Release \
+                            -DCMAKE_CUDA_ARCHITECTURES=${cuda_arch}"
+else
+    echo "@@@ compiling BIPP in debug mode @@@"
+    export BIPP_CMAKE_ARGS="-DBIPP_BUILD_TYPE=Debug \
+                            -DCMAKE_CXX_FLAGS_DEBUG=\"-g -O3 -march=${cpu_arch} -mprefer-vector-width=512 -ftree-vectorize\" \
+                            -DCMAKE_C_FLAGS_DEBUG=\"-g -O3 -march=${cpu_arch} -mprefer-vector-width=512 -ftree-vectorize\" \
+                            -DCMAKE_CUDA_ARCHITECTURES=${cuda_arch} \
+                            -DCMAKE_CUDA_FLAGS_DEBUG=\"-g -lineinfo --compiler-options=\"-march=${cpu_arch}\"\""
+fi
+
 echo "BIPP_CMAKE_ARGS: $BIPP_CMAKE_ARGS"
 
 #export CUDAFLAGS="-g -G"

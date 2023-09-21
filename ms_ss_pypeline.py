@@ -34,7 +34,7 @@ args = bipptb.check_args(sys.argv)
 # For reproducible results
 np.random.seed(0)
 
-np.set_printoptions(precision=3, linewidth=120)
+np.set_printoptions(precision=6, linewidth=120)
 
 # Create context with selected processing unit.
 # Options are "NONE", "AUTO", "CPU" and "GPU".
@@ -78,9 +78,15 @@ print(f"-I- frequency = {frequency}")
 wl = constants.speed_of_light / frequency.to_value(u.Hz)
 
 # Grids
+print(f"FoV = {FoV:.6f} rad")
 lim = np.sin(FoV.rad / 2)
-grid_slice = np.linspace(-lim, lim, args.pixw)
-l_grid, m_grid = np.meshgrid(grid_slice, grid_slice)
+print(f"lim = {lim:.6f}")
+offset = lim / (args.pixw / 2) * 0.5
+print(f"half pixel offset = {offset:.6f}")
+grid_slice1 = np.linspace(-lim - offset, lim - offset, args.pixw)
+grid_slice2 = np.linspace(-lim + offset, lim + offset, args.pixw)
+#grid_slice = np.linspace(-lim, lim, args.pixw)
+l_grid, m_grid = np.meshgrid(grid_slice2, grid_slice1)
 n_grid = np.sqrt(1 - l_grid ** 2 - m_grid ** 2)  # No -1 if r on the sphere !
 lmn_grid = np.stack((l_grid, m_grid, n_grid), axis=0)
 uvw_frame = frame.uvw_basis(ms.field_center)
@@ -235,12 +241,12 @@ if 1 == 0:
 
     I_std_eq = s2image.Image(I_std.data / S.data / i_it, I_std.grid)
     I_lsq_eq = s2image.Image(I_lsq.data / S.data / i_it, I_lsq.grid)
+    sfim_e = time.time()
 else:
     I_std_eq = s2image.Image(I_std.data / i_it, I_std.grid)
     I_lsq_eq = s2image.Image(I_lsq.data / i_it, I_lsq.grid)
     sfpe_s = sfpe_e = sfim_s = sfim_e = 0
 
-sfim_e = time.time()
 print(f"#@#SFIM {sfim_e - sfim_s:.3f} sec")
 
 jkt0_e = time.time()

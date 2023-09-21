@@ -4,7 +4,7 @@ set -e
 
 # Old CPU SS needs Marla when compiled with GCC
 export MARLA_ROOT=~/SKA/epfl-radio-astro/marla
-export LD_LIBRARY_PATH=$FINUFFT_ROOT/lib:$CUFINUFFT_ROOT/lib:$umpire_DIR/lib:$LD_LIBRARY_PATH
+#export LD_LIBRARY_PATH=$FINUFFT_ROOT/lib:$CUFINUFFT_ROOT/lib:$umpire_DIR/lib:$LD_LIBRARY_PATH
 
 
 # Check command line input (getopt not ideal as --f* will enable --from_scratch)

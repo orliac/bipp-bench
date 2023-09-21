@@ -15,13 +15,15 @@ import astropy.units as u
 parser = argparse.ArgumentParser(description='Running OSKAR simulation')
 parser.add_argument('--wsc_size',   help='WSC size [pixel]', required=True, type=int)
 parser.add_argument('--wsc_scale', help="WSC scale [arcsec]", required=True, type=float)
-parser.add_argument('--fov_deg', help="Field of view [degree]", required=True, type=float)
+#parser.add_argument('--fov_deg', help="Field of view [degree]", required=True, type=float)
 parser.add_argument('--num_time_steps', help="Number of time steps", required=True, type=int)
 parser.add_argument('--input_directory', help=".tm input directory", required=True)
 parser.add_argument('--telescope_lon', help="Longitude of telescope", required=True, type=float)
 parser.add_argument('--telescope_lat', help="Latitude of telescope", required=True, type=float)
 parser.add_argument('--phase_centre_ra_deg',  help="Phase centre's right ascension [deg]", required=True, type=float)
 parser.add_argument('--phase_centre_dec_deg', help="Phase centre's declination [deg] ",    required=True, type=float)
+parser.add_argument('--out_name', help="Output name", required=True)
+
 
 args = parser.parse_args()
 
@@ -47,8 +49,8 @@ params = {
         "input_directory": args.input_directory
     },
     "interferometer": {
-        "oskar_vis_filename": "oskar_bipp_paper.vis",
-        "ms_filename": "oskar_bipp_paper.ms",
+        "oskar_vis_filename": args.out_name + ".vis",
+        "ms_filename": args.out_name + ".ms",
         "channel_bandwidth_hz": 1e6,
         "time_average_sec": 10,
     }

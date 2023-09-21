@@ -70,12 +70,12 @@ else
 fi
  
 SOL_DIR=$(pwd)
-echo SOL_DIR = $SOL_DIR
+echo "-I SOL_DIR = $SOL_DIR"
 
 # Get option for current job in job array
 SED_LINE_INDEX=$((${SLURM_ARRAY_TASK_ID}+1))
 input_line=$(sed -n ${SED_LINE_INDEX}p $input_file | sed -e's/  */ /g')
-echo "-I- Input line >>$input_line<<"; echo
+echo "-I- Input line >>$input_line<<";
 TIME_START_IDX="$(get_option_value "$input_line" "--time_start_idx")"
 TIME_END_IDX="$(get_option_value "$input_line" "--time_end_idx")"
 WSC_SIZE="$(get_option_value "$input_line" "--pixw")"
@@ -83,10 +83,11 @@ WSC_SCALE="$(get_option_value "$input_line" "--wsc_scale")"
 MS_FILE="$(get_option_value "$input_line" "--ms_file")"
 CHANNEL_ID="$(get_option_value "$input_line" "--channel_id")"
 OUTNAME="$(get_option_value "$input_line" "--outname")"
-MS_BASENAME=$(basename -- "$MS_FILE")
 OUT_DIR="$(get_option_value "$input_line" "--output_directory")"
+echo "-I- OUT_DIR = $OUT_DIR"
 [ ! -d $OUT_DIR ] && mkdir -pv $OUT_DIR
 cd $OUT_DIR
+
 
 SLURMOUT_BASENAME=slurm-${SLURM_ARRAY_JOB_ID}_${SLURM_ARRAY_TASK_ID}.out
 ln -s $SOL_DIR/${SLURMOUT_BASENAME} $OUT_DIR/${SLURMOUT_BASENAME}
@@ -94,6 +95,13 @@ ln -s $SOL_DIR/${SLURMOUT_BASENAME} $OUT_DIR/${SLURMOUT_BASENAME}
 ## WARNING: CASA must be run before activating the environments!!
 #           (conflits otherwise)
 
+
+set -o pipefail  # trace ERR through pipes
+set -o errtrace  # trace ERR through 'time command' and other functions
+set -o nounset   ## set -u : exit the script if you try to use an uninitialised variable
+set -o errexit   ## set -e : exit the script if any statement returns a non-true return value
+
+RUN_OSKAR=1
 RUN_CASA=1
 RUN_WSCLEAN=1
 
@@ -101,13 +109,90 @@ CASA_OUT=dirty_casa
 CASA_LOG=dirty_casa.log
 CASA_TIME_LOG=dirty_casa_time.log
 
+IN_DIR=${OUT_DIR}/oskar
+sky_opt=''
+
+### Run OSKAR to produce a MS dataset
+if [[ $RUN_OSKAR == 1 ]]; then
+    
+    source ${ENV_SPACK}/activate.sh
+    source ${VENV}/bin/activate
+
+    MS_BASENAME_="oskar_9_sources"
+
+    ROOT_OSKAR=/home/orliac/SKA/oskar/OSKAR-2.8.3
+    export OSKAR_INC_DIR=${ROOT_OSKAR}/inst/include
+    export OSKAR_LIB_DIR=${ROOT_OSKAR}/inst/lib
+
+    # Run if you need to install the Python interface of OSKAR
+    #python -m pip install 'git+https://github.com/OxfordSKA/OSKAR.git@master#egg=oskarpy&subdirectory=python'
+    #python -m pip list
+
+    [ ! -d $IN_DIR ] && mkdir -pv $IN_DIR
+
+    TM="ska1low_new.tm"
+    INPUT_DIRECTORY="/work/ska/papers/bipp/oskar/tms"
+
+    cp -r ${INPUT_DIRECTORY}/${TM} $IN_DIR
+
+    read -r latlong < ${IN_DIR}/${TM}/position.txt
+    IFS=' '
+    read -a posarr <<< "$latlong"
+
+    cp -v $SOL_DIR/oskar_sim.py $IN_DIR
+    
+    echo "-I- IN_DIR = ${IN_DIR}"
+    cd $IN_DIR
+
+    python3 $IN_DIR/oskar_sim.py \
+            --wsc_size $WSC_SIZE \
+            --wsc_scale $WSC_SCALE \
+            --num_time_steps $TIME_END_IDX \
+            --input_directory $IN_DIR/${TM} \
+            --telescope_lon ${posarr[0]} \
+            --telescope_lat ${posarr[1]} \
+            --phase_centre_ra_deg 80.0 \
+            --phase_centre_dec_deg -40.0 \
+            --out_name $MS_BASENAME_ 
+    cd -
+
+    deactivate
+    source ${ENV_SPACK}/deactivate.sh
+
+    # Overwrite MS_FILE with OSKAR simulated data
+    MS_BASENAME=${MS_BASENAME_}.ms
+    ORIGINAL_MS_FILE=${IN_DIR}/${MS_BASENAME}
+    MS_FILE=${OUT_DIR}/${MS_BASENAME}
+
+    sky_file=${IN_DIR}/${MS_BASENAME_}.sky
+    [ -f $sky_file ] && sky_opt="--sky_file $sky_file"
+    echo "-I- sky_opt = $sky_opt"
+    
+else
+    echo "-E- FIX ME"
+    exit 1
+    MS_BASENAME=$(basename -- "$MS_FILE")
+    ORIGINAL_MS_FILE=$SOL_DIR/$MS_BASENAME
+    MS_FILE=${OUT_DIR}/$MS_BASENAME
+fi
+
+[ -d $ORIGINAL_MS_FILE ] || (echo "-E- MS dataset $ORIGINAL_MS_FILE not found" && exit 1)
+echo "-I- ORIGINAL_MS_FILE: $ORIGINAL_MS_FILE to be copied here . " `pwd` 
+
+
 if [[ $RUN_CASA == 1 ]]; then
 
     echo =============================================================================
     echo CASA
     echo =============================================================================
 
-    cp -r $SOL_DIR/$MS_BASENAME .
+    cp -rf  ${ORIGINAL_MS_FILE} ${MS_FILE}
+    pwd
+    ls -rtl
+    
+    echo ORIGINAL_MS_FILE = ${ORIGINAL_MS_FILE}
+    echo MS_FILE = ${MS_FILE}
+    echo MS_BASENAME = ${MS_BASENAME}
 
     source ${ENV_SPACK}/activate.sh
     source ${VENV}/bin/activate
@@ -130,11 +215,16 @@ if [[ $RUN_CASA == 1 ]]; then
     deactivate
     source ${ENV_SPACK}/deactivate.sh
 
-    CASA=~/SKA/casa-6.5.3-28-py3.8/bin/casa
+    #CASA=~/SKA/casa-6.5.3-28-py3.8/bin/casa
+    #[ -f $CASA ] || (echo "Fatal. Could not find $CASA" && exit 1)
+    #which $CASA
+    #$CASA --version
+
+    CASA=/work/ska/soft/casa-6.5.3-28-py3.8/bin/casa
     [ -f $CASA ] || (echo "Fatal. Could not find $CASA" && exit 1)
     which $CASA
     $CASA --version
-
+    
     casa_cmd="$CASA \
         --nogui \
         --norc \
@@ -147,7 +237,10 @@ if [[ $RUN_CASA == 1 ]]; then
         --cell ${WSC_SCALE} \
         --timerange ${CASA_TIMERANGE} \
         --spw *:${CHANNEL_ID}"
-    echo; echo
+    echo
+    echo "casa_cmd:"
+    echo $casa_cmd
+    echo
 
     /usr/bin/time \
         --output=$CASA_TIME_LOG \
@@ -188,9 +281,9 @@ if [[ $RUN_WSCLEAN == 1 ]]; then
     echo =============================================================================
 
     # dirty
-    #    -make-psf \
 
-    cp -r $SOL_DIR/$MS_BASENAME .
+    cp -rf  ${ORIGINAL_MS_FILE} ${MS_FILE}
+
     wsclean_cmd="wsclean \
         -verbose \
         -log-time \
@@ -241,7 +334,8 @@ if [[ $RUN_WSCLEAN == 1 ]]; then
     #echo
 fi
 
-cd -
+#cd -
+cd ${SOL_DIR}
 
 echo =============================================================================
 echo ${pipeline}
@@ -253,9 +347,13 @@ BLUEBILD_TIME_LOG=$OUT_DIR/${OUTNAME}_bluebild_time.log
 export CUDA_ENABLE_COREDUMP_ON_EXCEPTION=1
 
 echo "### input_line = " $input_line
+input_line="${input_line} --ms_file ${MS_FILE}"
+echo "### input_line = " $input_line
 
 py_script=${pipeline}_${algo}_${package}.py
 
+cp -rf  ${ORIGINAL_MS_FILE} ${MS_FILE}
+    
 /usr/bin/time \
     --output=$BLUEBILD_TIME_LOG \
     --portability python -u ${py_script} ${input_line} | tee ${BLUEBILD_LOG}
@@ -292,7 +390,8 @@ PLOTS_CMD+=" --wsc_fits  ${WSCLEAN_OUT}-dirty.fits"
 PLOTS_CMD+=" --wsc_log   ${WSCLEAN_LOG}"
 PLOTS_CMD+=" --casa_fits ${CASA_OUT}.image.fits"
 PLOTS_CMD+=" --casa_log  ${CASA_LOG}"
-
+PLOTS_CMD+=" --wsc_size ${WSC_SIZE} --wsc_scale ${WSC_SCALE}"
+PLOTS_CMD+=" ${sky_opt}"
 $PLOTS_CMD
 
 cd -
