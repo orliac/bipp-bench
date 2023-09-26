@@ -70,7 +70,7 @@ def get_bipp_info_from_json(bipp_json):
 
 def my_subplot(plt, wcs, data, vmin, vmax, plot_grid, plot_circles, npix, cmap,
                sky_filepath, fh_sky_out, locate_max, wsc_size, wsc_scale, solution=None,
-               nz_vis=None):
+               nz_vis=None, grid_color='white'):
     
     plt.imshow(data, vmin=vmin, vmax=vmax, interpolation ="nearest", origin ="lower",
                aspect=1, cmap=cmap)
@@ -84,9 +84,17 @@ def my_subplot(plt, wcs, data, vmin, vmax, plot_grid, plot_circles, npix, cmap,
     """
     
     if plot_grid:
-        plt.grid(color='white', ls='solid')
+        plt.grid(color=grid_color, ls='solid')
 
     if plot_circles:
+        rad1 = 0.50
+        rad2 = 0.75
+        rad3 = 1.00
+        half_width_pix = wsc_size / 2
+        rad1_pix = rad1 * half_width_pix
+        rad2_pix = rad2 * half_width_pix
+        rad3_pix = rad3 * half_width_pix
+
         r1 = Circle((half_width_pix, half_width_pix), rad1_pix, edgecolor='darkorange', facecolor='none')
         plt.gca().add_patch(r1)
         r2 = Circle((half_width_pix, half_width_pix), rad2_pix, edgecolor='fuchsia', facecolor='none')
@@ -327,15 +335,6 @@ def plot_wsc_casa_bb(wsc_fits, wsc_log, casa_fits, casa_log, bb_grid, bb_data, b
 
     #sys.exit(0)
 
-    rad1 = 0.50
-    rad2 = 0.75
-    rad3 = 1.00
-
-    half_width_pix = bb_data.shape[0] / 2 #EO: check if that always hold!
-    rad1_pix = rad1 * half_width_pix
-    rad2_pix = rad2 * half_width_pix
-    rad3_pix = rad3 * half_width_pix
-
     plt.clf()
     fig = plt.figure(figsize=(21,14)) 
 
@@ -346,9 +345,11 @@ def plot_wsc_casa_bb(wsc_fits, wsc_log, casa_fits, casa_log, bb_grid, bb_data, b
 
     vmin, vmax = -max_absz, max_absz
     vmin, vmax = zmin, zmax
-
-    plot_grid = False
+    
+    plot_grid    = True
     plot_circles = False
+    if sky_file:
+        plot_grid = plot_circles = False
 
     my_viridis = plt.cm.viridis
     my_viridis.set_bad((1, 0, 0, 1))
@@ -374,7 +375,8 @@ def plot_wsc_casa_bb(wsc_fits, wsc_log, casa_fits, casa_log, bb_grid, bb_data, b
     plt.gca().coords[0].set_axislabel(" ")
     plt.gca().coords[0].set_ticklabel_visible(True)
     plt.gca().coords[1].set_axislabel(" ")
-    plt.gca().coords[1].set_ticklabel_visible(False)
+    if sky_file:
+        plt.gca().coords[1].set_ticklabel_visible(False)
 
     ### Bluebild
     plt.subplot(233, projection=wcs, slices=('x', 'y', 0, 0))
@@ -385,12 +387,14 @@ def plot_wsc_casa_bb(wsc_fits, wsc_log, casa_fits, casa_log, bb_grid, bb_data, b
     plt.gca().coords[0].set_axislabel(" ")
     plt.gca().coords[0].set_ticklabel_visible(True)
     plt.gca().coords[1].set_axislabel(" ")
-    plt.gca().coords[1].set_ticklabel_visible(False)
+    plt.gca().coords[1].set_ticklabel_position('lr')
+    if sky_file:
+        plt.gca().coords[1].set_ticklabel_visible(False)
     
     cb_ax = fig.add_axes([0.94, 0.535, 0.012, 0.34])
     cbar = plt.colorbar(cax=cb_ax)
     cbar.ax.tick_params(size=0)
-    cbar.set_label("Intensity [Jy/beam]")
+    cbar.set_label("Intensity [Jy/beam]", rotation=-90, va='bottom')
 
     ref_pix = int(wsc_size / 2)
     assert(ref_pix * 2 == wsc_size)
@@ -407,13 +411,13 @@ def plot_wsc_casa_bb(wsc_fits, wsc_log, casa_fits, casa_log, bb_grid, bb_data, b
         
     ### Diff plots
     
-    plot_grid = False
+    plot_grid = True
     plot_circles = False
     locate_max = False
 
     plt.subplot(234, projection=wcs, slices=('x', 'y', 0, 0))
     my_subplot(plt, wcs, diff_casa_wsc, -abs_max, abs_max, plot_grid, plot_circles, npix, 'seismic',
-               sky_file, None, locate_max, wsc_size, wsc_scale)
+               sky_file, None, locate_max, wsc_size, wsc_scale, grid_color='black')
     plt.title('(d) CASA minus WSClean', pad=14)
     plt.gca().coords[0].set_axislabel("Right ascension")
     plt.gca().coords[1].set_axislabel("Declination")
@@ -422,25 +426,28 @@ def plot_wsc_casa_bb(wsc_fits, wsc_log, casa_fits, casa_log, bb_grid, bb_data, b
     plt.gca().set_autoscale_on(False)
     plt.subplot(235, projection=wcs, slices=('x', 'y', 0, 0))
     my_subplot(plt, wcs, diff_bb_casa, -abs_max, abs_max, plot_grid, plot_circles, npix, 'seismic',
-               sky_file, None, locate_max, wsc_size, wsc_scale)
+               sky_file, None, locate_max, wsc_size, wsc_scale, grid_color='black')
     plt.title('(e) Bluebild minus CASA', pad=14)
     plt.gca().coords[0].set_axislabel("Right ascension")
     plt.gca().coords[1].set_axislabel(" ")
-    plt.gca().coords[1].set_ticklabel_visible(False)
+    if sky_file:
+        plt.gca().coords[1].set_ticklabel_visible(False)
 
     plt.gca().set_autoscale_on(False)
     plt.subplot(236, projection=wcs, slices=('x', 'y', 0, 0))
     my_subplot(plt, wcs, diff_bb_wsc, -abs_max, abs_max, plot_grid, plot_circles, npix, 'seismic',
-               sky_file, None, locate_max, wsc_size, wsc_scale)
+               sky_file, None, locate_max, wsc_size, wsc_scale, grid_color='black')
     plt.title('(f) Bluebild minus WSClean', pad=14)
     plt.gca().coords[0].set_axislabel("Right ascension")
     plt.gca().coords[1].set_axislabel(" ")
-    plt.gca().coords[1].set_ticklabel_visible(False)
+    plt.gca().coords[1].set_ticklabel_position('lr')
+    if sky_file:
+        plt.gca().coords[1].set_ticklabel_visible(False)
     
     cb_ax = fig.add_axes([0.94, 0.115, 0.012, 0.34])
     cbar = plt.colorbar(cax=cb_ax)
     cbar.ax.tick_params(size=0)
-    cbar.set_label("Intensity difference [Jy/beam]")
+    cbar.set_label("Intensity difference [Jy/beam]", rotation=-90, va='bottom')
     
     plt.savefig(file_png, bbox_inches='tight', dpi=1400)
     print("-I-", file_png)

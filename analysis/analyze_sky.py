@@ -26,6 +26,9 @@ if __name__ == "__main__":
     args = check_args(sys.argv)
     print(args)
 
+    basename = os.path.basename(args.sky_file)
+    basename = os.path.splitext(basename)[0]
+    
     add_label = False
     if args.wsc_size == 256:
         add_label = True
@@ -139,8 +142,8 @@ if __name__ == "__main__":
     axes[1].tick_params(axis='y', labelsize=14)
 
     plt.tight_layout()
-    out_png = os.path.join(args.outdir, "recovered_vs_simulated.png")
-    plt.savefig(out_png)
+    out_png = os.path.join(args.outdir, basename + '_rec_sky.png')
+    plt.savefig(out_png, dpi=600)
     print("-I- Figure saved under:", out_png)
     #plt.show()
     

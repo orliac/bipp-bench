@@ -4,6 +4,8 @@ import json
 import numpy as np
 import benchtb
 import argparse
+import matplotlib
+matplotlib.use('tkagg')
 import matplotlib.pyplot as plt
 from matplotlib.ticker import ScalarFormatter
 
@@ -13,6 +15,7 @@ def check_args(args_in):
     parser = argparse.ArgumentParser(args_in)
     parser.add_argument("--bench_root", help="Root directory of benchmark to analyis", required=True)
     parser.add_argument("--telescope",  help="Instrument", required=True, choices=['LOFAR', 'MWA', 'SKALOW'])
+    parser.add_argument("--out_dir"  ,  help="Output directory for plots", required=True)
     args = parser.parse_args()
     if not os.path.isdir(args.bench_root):
         raise Exception("-E- Benchmark directory not found")
@@ -360,17 +363,104 @@ def check_solutions_consistency(nsta, nlev, pixw):
             npyj = os.path.join(paths_sols[j], f"{args.telescope}_{specs['package']}_{specs['algo']}_{specs['proc_unit']}_0_I_lsq_eq_data.npy")
             datj = np.load(npyj)
             nlj, nsj = benchtb.get_solution_nickname_from_path(path_sol=paths_sols[j], bench_root=args.bench_root)
-            #if nli not in out: out[nli] = {}
-            if nsi not in out: out[nsi] = {}
+            if nli not in out: out[nli] = {}
+            #if nsi not in out: out[nsi] = {}
             rmse, maxdiff = benchtb.stats_image_diff_compressing_levels(dati, datj)
-            #print(f" ADDING  {nli:13s} {nlj:13s} {nlev:2d} {pixw:4d}: RMSE = {rmse:8.2f}, max diff = {maxdiff:8.2f}")
-            #out[nli][nlj] = {'rmse': rmse}
-            out[nsi][nsj] = {'rmse': rmse}
-
+            print(f" ADDING  {nli:13s}/{nsi} {nlj:13s}/{nsj} {nlev:2d} {pixw:4d}: RMSE = {rmse:8.2f}, max diff = {maxdiff:8.2f}")
+            out[nli][nlj] = {'rmse': rmse}
+            #out[nsi][nsj] = {'rmse': rmse}
+    
     return out
 
 
-def plot_solutions_consistency(nlev, nsta, pixws):
+def plot_solutions_consistency_new(sols, nlev, nsta, pixws):
+
+    #from mpl_toolkits.axes_grid1 import make_axes_locatable
+    from mpl_toolkits.axes_grid1 import ImageGrid
+    
+    pixws = sorted(pixws)
+   
+    cons = {}
+    for pixw in pixws:
+        cons[pixw] = check_solutions_consistency(nlev=nlev, nsta=0, pixw=pixw)
+
+    # Get overall min max RMS
+    glob_min_rmse = 1E10
+    glob_max_rmse = -1E10
+    for pixw in pixws:
+        maxin = 0
+        for a in cons[pixw].keys():
+            for b in cons[pixw][a]:
+                rmse = cons[pixw][a][b]['rmse']
+                #print(pixw, a, b, rmse)
+                if rmse > glob_max_rmse: glob_max_rmse = rmse
+                if rmse < glob_min_rmse: glob_min_rmse = rmse
+
+                if ('Ss' in a and 'Nufft' in b) or ('Nufft' in a and 'Ss' in b):
+                    print(f" ... cross rmse: {pixw:4d}, {a:13s} {b:13s} {rmse:.3f}")
+                
+    print(glob_min_rmse, glob_max_rmse)
+    #sys.exit(1)
+    
+    nplots = len(pixws)
+    solseq = ['BluebildCpuSs', 'BippCpuSs', 'BippGpuSs', 'BippCpuNufft', 'BippGpuNufft']
+    nsols  = len(solseq)
+        
+    #fig, axes = plt.subplots(1, nplots, figsize=(12,5))
+    fig = plt.figure(figsize=(12,5))
+    grid = ImageGrid(fig, 111,
+                     nrows_ncols = (1, nplots),
+                     axes_pad = 0.4,
+                     cbar_location = "right",
+                     cbar_mode="single",
+                     cbar_size="5%",
+                     cbar_pad=0.1)
+
+    for ip in range(0, nplots):
+        
+        res = pixws[ip]
+        print(res, cons[res])
+        
+        A = np.zeros([nsols, nsols])
+        
+        for i in range(0, nsols):
+            for j in range(i+1, nsols):
+                nsi = solseq[i]
+                nsj = solseq[j]
+                if rmse := cons.get(res).get(nsi, {}).get(nsj, {}).get('rmse'):
+                    A[i, j] = rmse
+                    A[j, i] = rmse
+                elif rmse := cons.get(res).get(nsj, {}).get(nsi, {}).get('rmse'):
+                    A[i, j] = rmse
+                    A[j, i] = rmse
+                    
+        print(A)
+        im = grid[ip].imshow(A, aspect='equal', cmap=plt.get_cmap('Blues'), vmin=glob_min_rmse, vmax=glob_max_rmse)
+        if ip == nplots-1:
+            cb = plt.colorbar(im, cax=grid.cbar_axes[0])
+            cb.set_label('RMSE [Jy/beam]', rotation=-90, va='bottom')
+        grid[ip].hlines(y=np.arange(0, nsols)+0.5, xmin=np.full(nsols, 0)-0.5, xmax=np.full(nsols, nsols)-0.5, color="white")
+        grid[ip].vlines(x=np.arange(0, nsols)+0.5, ymin=np.full(nsols, 0)-0.5, ymax=np.full(nsols, nsols)-0.5, color="white")
+        grid[ip].tick_params(top=True, labeltop=True, bottom=False, labelbottom=False)
+        if ip == 0:
+            grid[ip].tick_params(left=True)
+            grid[ip].set_yticks(np.arange(0, nsols, 1), solseq)
+        #else:
+        #    grid[ip].set_yticks([])
+
+        grid[ip].set_xticks(np.arange(0, nsols, 1), solseq, rotation=45, ha='left')
+        grid[ip].xaxis.set_label_position('bottom')
+        grid[ip].set_xlabel(f"{res} x {res}")
+        #for i in range(0, nsols):
+        #    for j in range(0, nsols):
+        #        axes[ip].text(i, j, f"{A[i][j]:.1e}", va='center', ha='center')
+        
+    #plt.show()
+    png_file = os.path.join(args.out_dir, f"consistency_new_{nlev}.png")
+    fig.savefig(png_file, dpi=600, bbox_inches='tight')
+    print("-I- saved plot", png_file)
+
+def plot_solutions_consistency(sols, nlev, nsta, pixws):
     cons = {}
     for pixw in sorted(pixws):
         cons[pixw] = check_solutions_consistency(nlev=nlev, nsta=0, pixw=pixw)
@@ -386,9 +476,9 @@ def plot_solutions_consistency(nlev, nsta, pixws):
 
     fig, axes = plt.subplots(nsols, 1, sharex=True, sharey=True)
     fig.set_figwidth(7)
-    fig.set_figheight(6)
+    fig.set_figheight(8)
     suptitle = fig.suptitle('RMS [Jy/beam] of differences between solutions', x=0.6, y=1.05, fontsize=16)
-
+    
     max_rms = -1
     j = 0
     lo = []
@@ -410,8 +500,13 @@ def plot_solutions_consistency(nlev, nsta, pixws):
                     y.append(0.0)
                 x.append(i + x_off)
                 i += 1
-            if np.amax(y) > max_rms: max_rms = np.amax(y)
-            print(soly, pixw, x, y)
+            if np.amax(y) > max_rms:
+                max_rms = np.amax(y)
+            print(f"{soly} {pixw:4d} ", end="")
+            for el in x: print(f"{el:4.1f} ", end="")
+            for el in y: print(f"{el:.2e} ", end="")
+            print()
+            
             l = axes[j].plot(x, y, color=pixws_colors[pixw], marker=pixws_markers[pixw], linestyle='-.',
                              linewidth=0.3, markersize=6)
             if j == 0:
@@ -419,18 +514,19 @@ def plot_solutions_consistency(nlev, nsta, pixws):
             i_off += 1
 
         j += 1
+        print()
     axes[0].set_xticks(range(0, nsols))
     axes[nsols-1].set_xticklabels(ln, rotation=45, ha='right')
 
     # Hide x labels and tick labels for all but bottom plot.
     j = 0
     for axe, soly in zip(axes, sols):
-        axe.set_ylim(-0.4, max_rms * 1.3)
+        axe.set_ylim(max_rms * -0.2, max_rms * 1.2)
         axe.label_outer()
-        axe.set_ylabel(sols[soly]['name'], rotation=0, horizontalalignment='right')
+        axe.set_ylabel(sols[soly]['name'], rotation=45, horizontalalignment='right')
         if j == 0:
             axe.legend(labels=pixws_colors.keys(), title="Image resolution [pixel]",
-                       loc='upper center', bbox_to_anchor=(0.5, 2.2),
+                       loc='upper center', bbox_to_anchor=(0.5, 1.8),
                        ncol=4, fancybox=True, shadow=True)
 
         j += 1
@@ -448,7 +544,11 @@ def plot_solutions_consistency(nlev, nsta, pixws):
     plt.subplots_adjust(hspace=0.1)
 
     #plt.savefig(f"consistency_{nlev}.png", bbox_extra_artists=(suptitle,), bbox_inches="tight")
-    fig.savefig(f"consistency_{nlev}.png")
+    png_file = os.path.join(args.out_dir, f"consistency_{nlev}.png")
+    fig.savefig(png_file, dpi=600)
+    print("-I- saved plot", png_file)
+
+    
 
 
 def plot_solutions_ranges(nsta, pixws):
@@ -476,7 +576,7 @@ def plot_solutions_ranges(nsta, pixws):
 
 # Check that solutions are the same regardless the number of clustered energy levels
 #
-def compare_levels():
+def compare_levels(sols):
     print(f"\n@@@ compare_levels\n")
  
     levels = sorted(tree['nlevs'])
@@ -484,13 +584,17 @@ def compare_levels():
     print(levels, nlev)
     
     to_plot = {}
-
+    tab_lines = []
+    
     for sol in sols.keys():
         to_plot[sol] = {}
         x = []
         y = []
         max_rmse = -1
         min_rmse = 1E10
+        max_diff_range = -1
+        max_diff_range_s = max_diff_range_e = 1E10
+        diff_ranges = []
         for nsta in sorted(tree['nstas']):
             for pixw in sorted(tree['pixws']):
                 for i in range(0, nlev):
@@ -511,23 +615,38 @@ def compare_levels():
                         datj = np.sum(datj, axis=0)
                         diff = dati - datj                        
                         min_diff, max_diff = np.amin(diff), np.amax(diff)
+                        diff_range = max_diff - min_diff
+                        diff_ranges.append(diff_range)
+                        if diff_range > max_diff_range:
+                            max_diff_range = diff_range
+                            max_diff_range_s = min_diff
+                            max_diff_range_e = max_diff
                         x.append(abs(min_diff))
                         y.append(abs(max_diff))
                         rmse, maxdiff = benchtb.stats_image_diff(dati, datj)
-                        print(f"{sol} {nsta} {pixw:4d} {levels[i]} {levels[j]}: [{min_diff:.3e}, {max_diff:.3e}], rmse = {rmse:.3e}, max abs diff = {maxdiff:.3e}")
+                        print(f"{sol} {nsta} {pixw:4d} {levels[i]} {levels[j]}: [{min_diff:.3e}, {max_diff:.3e}], range = {diff_range:.3e}, rmse = {rmse:.3e}, max abs diff = {maxdiff:.3e}")
                         if rmse > max_rmse: max_rmse = rmse
                         if rmse < min_rmse: min_rmse = rmse
             to_plot[sol]['x'] = x
             to_plot[sol]['y'] = y
-        print(f" @@@ min, max rmse for {sols[sol]['name']} = {min_rmse:.3e}, {max_rmse:.3e}")
+        print(f" @@@ min, max rmse for {sols[sol]['name']} = {min_rmse:.3e}, {max_rmse:.3e}  max_range = [{max_diff_range_s:.2e}, {max_diff_range_e:.2e}] = {max_diff_range:.2e}")
+        tab_line = f"{sols[sol]['name']:13s} & {np.amin(diff_ranges):.2e} & {np.amax(diff_ranges):.2e} & {np.mean(diff_ranges):.2e} & {np.std(diff_ranges):.2e}"
+        print(f" @@@ Difference ranges (min, max, mean, std): {np.amin(diff_ranges):.2e} {np.amax(diff_ranges):.2e} {np.mean(diff_ranges):.2e} {np.std(diff_ranges):.2e}")
+        tab_lines.append(tab_line)
+        
     fig, ax = plt.subplots()
     for sol in to_plot.keys():
-        ax.loglog(to_plot[sol]['x'], to_plot[sol]['y'], 'o', label=sols[sol]['name'],
+        ax.loglog(to_plot[sol]['x'], to_plot[sol]['y'], label=sols[sol]['name'],
                   color=sols[sol]['color'], marker=sols[sol]['marker'])
     ax.set_xlabel('Solution absolute minimum difference [Jy/beam]')
     ax.set_ylabel('Solution maximum difference [Jy/beam]')
     ax.legend()
-    plt.savefig('scatter.png')
+    png_file = os.path.join(args.out_dir, 'scatter.png')
+    plt.savefig(png_file, dpi=600)
+    print("-I- saved", png_file)
+
+    for line in tab_lines:
+        print(line + " \\\\")
 
 
 if __name__ == "__main__":
@@ -553,26 +672,27 @@ if __name__ == "__main__":
     print("SOLS =\n", SOLS)
 
     # Compare same solution over the various energy levels.
-    #compare_levels()
-    #sys.exit(0)
+    #compare_levels(sols=SOLS)
 
+    # Show first solutions are equivalent regardless the number of energy levels considered
+    # => only plot for a single clustering
+    for nlev in 1,:
+        plot_solutions_consistency_new(sols=SOLS, nlev=nlev, nsta=0, pixws=tree['pixws'])
+        
+    sys.exit(0)
+
+    
     #plot_solutions_ranges(nsta=0, pixws=tree['pixws'])
+    #sys.exit(1)
+    
     
     # Plot tts and speedup factors
     #for nlev in 1, 2, 4, 8:
     #    plot_wsclean_vs_bipp(nlev=nlev, nsta=0, pixws=tree['pixws'], sols=SOLS)
 
-    for nlev in 1,:
-        for pixw in 256, 512, 1024, 2048:
-            camemberts(nlev=nlev, nsta=0, pixw=pixw, sol='bgn')
-
-    # Show first solutions are equivalent regardless the number of energy levels considered
-    # => only plot for a single clustering
     #for nlev in 1,:
-    #    plot_solutions_consistency(nlev=nlev, nsta=0, pixws=tree['pixws'])
-        
-    #sys.exit(0)
-
+    #    for pixw in 256, 512, 1024, 2048:
+    #        camemberts(nlev=nlev, nsta=0, pixw=pixw, sol='bgn')
     
 
 

@@ -22,10 +22,11 @@ def get_wsclean_info_from_log(wsclean_log):
             wsc_gridvis = re.split(patt, line)[-1]
 
         # If uniform gridding
-        #patt = "Gridded visibility count:\s*"
-        #if re.search(patt, line):
-        #    print("#-#", line)
-        #    wsc_gridvis = re.split(patt, line)[-1]
+        if 1 == 0:
+            patt = "Gridded visibility count:\s*"
+            if re.search(patt, line):
+                print("#-#", line)
+                wsc_gridvis = re.split(patt, line)[-1]
 
         if re.search("Inversion:", line):
             wsc_t_inv, wsc_t_pred, wsc_t_deconv = re.split("\s*Inversion:\s*|\s*,\s*prediction:\s*|\s*,\s*deconvolution:\s*", line)[-3:]

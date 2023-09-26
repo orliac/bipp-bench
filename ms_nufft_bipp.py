@@ -97,18 +97,16 @@ opt.set_local_uvw_partition(bipp.Partition.grid([gp, gp, 1]))
 time_id_pe = slice(args.time_start_idx, args.time_end_idx, args.time_slice_pe)
 time_id_im = slice(args.time_start_idx, args.time_end_idx, args.time_slice_im)
 
-USE_FNE=False # New: False, Old: True
 
 ### Intensity Field ===========================================================
 
 # Parameter Estimation
 ifpe_s = time.time()
 
-if USE_FNE:
-    I_est = bb_pe.IntensityFieldParameterEstimator(args.nlev, sigma=args.sigma, ctx=ctx, filter_negative_eigenvalues=args.filter_negative_eigenvalues)
-else:
+if not args.filter_negative_eigenvalues:
     assert(args.sigma == 1.0)
-    I_est = bb_pe.IntensityFieldParameterEstimator(args.nlev, sigma=args.sigma, ctx=ctx)
+    
+I_est = bb_pe.IntensityFieldParameterEstimator(args.nlev, sigma=args.sigma, ctx=ctx)
     
 IFPE_NVIS  = 0
 IFPE_TVIS  = 0
@@ -154,42 +152,28 @@ N_antenna, N_station = W.shape
 print("-I- N_antenna =", N_antenna)
 print("-I- N_station =", N_station)
 
-if not USE_FNE:
+if not args.filter_negative_eigenvalues:
     print(f"-W- Using negative eigenvalues! Adding extra negative interval and setting N_eig to S.data.shape[0] = {S.data.shape[0]}!")
     intensity_intervals = np.append(intensity_intervals, [[np.finfo("f").min, -np.finfo("f").tiny]], axis=0)
     N_eig = S.data.shape[0]
 print("-I- intensity intervals =\n", intensity_intervals)
-print("-I- N_eig =\n", N_eig)
+print("-I- N_eig =", N_eig)
 
 # Imaging
 n_vis_ifim = 0
 ifim_s = time.time()
 ifim_vis = 0
 
-if USE_FNE:
-    imager = bipp.NufftSynthesis(
-        ctx,
-        opt,
-        N_antenna,
-        N_station,
-        intensity_intervals.shape[0],
-        ["LSQ"],# "SQRT"],
-        lmn_grid[0],
-        lmn_grid[1],
-        lmn_grid[2],
-        args.precision, args.filter_negative_eigenvalues)
-else:
-    imager = bipp.NufftSynthesis(
-        ctx,
-        opt,
-        N_antenna,
-        N_station,
-        intensity_intervals.shape[0],
-        ["LSQ"],# "SQRT"],
-        lmn_grid[0],
-        lmn_grid[1],
-        lmn_grid[2],
-        args.precision)
+imager = bipp.NufftSynthesis(ctx,
+                             opt,
+                             N_antenna,
+                             N_station,
+                             intensity_intervals.shape[0],
+                             ["LSQ"],# "SQRT"],
+                             lmn_grid[0],
+                             lmn_grid[1],
+                             lmn_grid[2],
+                             args.precision)
 
 IFIM_NVIS  = 0
 IFIM_TVIS  = 0
