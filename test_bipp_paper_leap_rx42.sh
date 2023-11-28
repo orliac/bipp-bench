@@ -18,8 +18,8 @@ RUN_CASA=1
 RUN_WSCLEAN=1
 RUN_BIPP=1
 RUN_BIPP_PLOT=1
-
 PLOT_ONLY=0
+
 if [[ $PLOT_ONLY == 1 ]]; then
     RUN_CASA=0; RUN_WSCLEAN=0; RUN_BIPP=0;
 fi
@@ -33,11 +33,11 @@ do
         p) INSTALL_PYPELINE=1;;
     esac
 done
-echo "INSTALL_BIPP?     $INSTALL_BIPP"
-echo "INSTALL_PYPELINE? $INSTALL_PYPELINE"
+echo "-I- INSTALL_BIPP?     $INSTALL_BIPP"
+echo "-I- INSTALL_PYPELINE? $INSTALL_PYPELINE"
 
 if [[ $RUN_BIPP == 1 && $INSTALL_BIPP == 1 ]]; then
-    sh install_bipp_on_izar.sh orliac
+    sh install_bipp_on_izar.sh --repo orliac #--dsk
 fi    
 if [[ $RUN_BIPP == 1 && $INSTALL_PYPELINE == 1 ]]; then
     sh install_pypeline_on_izar.sh orliac
@@ -49,41 +49,56 @@ VENV=VENV_IZARGCC
 # Keep hard coded for Slurm
 SOFT_DIR=/home/orliac/SKA/epfl-radio-astro/bipp-bench
 
-#IN_DIR=/work/ska/papers/bipp/oskar/test
+IN_DIR=/work/ska/papers/bipp/data/LEAP_paper
+#IN_DIR=/work/ska/papers/bipp/data/LEAP_paper_sandbox
 MS_BASENAME_=RX42_SB100-109.2ch10s
 MS_BASENAME=${MS_BASENAME_}.ms
-TELESCOPE="LOFAR"
+MS_FILE=${IN_DIR}/${MS_BASENAME}
+[ -d $MS_FILE ] || (echo "-E- MS dataset $MS_FILE not found" && exit 1)
 
-TIME_START_IDX=0
+TELESCOPE="LOFAR"
+PRECISION="double"
+NUFFT_EPS=0.00001
+
+CASA=/work/ska/soft/casa-6.5.3-28-py3.8/bin/casa
+
+if [[ 1 == 0 ]]; then
+    [ -f $CASA ] || (echo "Fatal. Could not find $CASA" && exit 1)
+    $CASA \
+        --nogui \
+        --norc \
+        --notelemetry \
+        --logfile $IN_DIR/remove_weights.log \
+        -c $SOFT_DIR/casa_set_uniform_weight.py \
+        --ms_file ${MS_FILE}
+
+    exit 1
+fi
+
+TIME_START_IDX=100
 TIME_END_IDX=3123
+TIME_END_IDX=109 # 108 OK, 109 issue !!!!
 TIME_SLICE_PE=1
 TIME_SLICE_IM=1
 TIME_TAG=${TIME_START_IDX}-${TIME_END_IDX}-${TIME_SLICE_PE}-${TIME_SLICE_IM}
 
-WSC_SIZE=2048
+WSC_SIZE=6144; WSC_SCALE=2
 
 source ~/SKA/ska-spack-env/${SPACK_SKA_ENV}/activate.sh
 source $VENV/bin/activate
 
-WSC_SCALE=7
-
 FOV_DEG=$(python get_fov_deg.py --size $WSC_SIZE --scale $WSC_SCALE)
 
-OUT_DIR=/work/ska/orliac/leap/rx42_weights/${WSC_SIZE}/${WSC_SCALE}/${TIME_TAG}
+OUT_DIR=/work/ska/orliac/leap/rx42_weights_update/${WSC_SIZE}/${WSC_SCALE}/${TIME_TAG}
 [ ! -d $OUT_DIR ] && mkdir -pv $OUT_DIR
-
-IN_DIR=/work/ska/papers/bipp/data/LEAP_paper
-
-MS_FILE=${IN_DIR}/${MS_BASENAME}
-[ -d $MS_FILE ] || (echo "-E- MS dataset $MS_FILE not found" && exit 1)
 
 SIGMA=1.0
 
-CHANNEL_ID=0
+CHANNEL_ID_START=0
+CHANNEL_ID_END=0
 
 BIPP_NLEV=1 # Bluebild number of (positive) energy levels
 BIPP_FNE=0  # Bluebild swith to filter out (=1) or not (=0) negative eigenvalues
-
 
 WSCLEAN_OUT=${OUT_DIR}/${MS_BASENAME}-dirty_wsclean
 WSCLEAN_LOG=${OUT_DIR}/${MS_BASENAME}-dirty_wsclean.log
@@ -99,7 +114,6 @@ if [[ $RUN_CASA == 1 ]]; then
     python get_ms_timerange.py \
         --ms ${MS_FILE} \
         --data 'DATA' \
-        --channel_id $CHANNEL_ID \
         --time_start_idx ${TIME_START_IDX} \
         --time_end_idx ${TIME_END_IDX} \
         --time_file ${TIME_FILE}
@@ -113,7 +127,6 @@ if [[ $RUN_CASA == 1 ]]; then
     deactivate
     source ~/SKA/ska-spack-env/${SPACK_SKA_ENV}/deactivate.sh
 
-    CASA=/work/ska/soft/casa-6.5.3-28-py3.8/bin/casa
     [ -f $CASA ] || (echo "Fatal. Could not find $CASA" && exit 1)
     $CASA --version
 
@@ -128,7 +141,7 @@ if [[ $RUN_CASA == 1 ]]; then
         --imsize ${WSC_SIZE} \
         --cell ${WSC_SCALE} \
         --timerange  $CASA_TIMERANGE\
-        --spw '*:'$CHANNEL_ID
+        --spw '*:'$CHANNEL_ID_START'~'$CHANNEL_ID_END
     echo; echo
 
     source ~/SKA/ska-spack-env/${SPACK_SKA_ENV}/activate.sh
@@ -144,7 +157,7 @@ if [[ $RUN_WSCLEAN == 1 ]]; then
     time wsclean \
         -verbose \
         -log-time \
-        -channel-range $CHANNEL_ID $(expr $CHANNEL_ID + 1) \
+        -channel-range $CHANNEL_ID_START $(expr $CHANNEL_ID_END + 1) \
         -size ${WSC_SIZE} ${WSC_SIZE} \
         -scale ${WSC_SCALE}asec \
         -pol I \
@@ -161,6 +174,8 @@ if [[ $RUN_WSCLEAN == 1 ]]; then
     echo
 fi
 
+INT_FILTERS="LSQ"
+SEN_FILTERS=""
 
 # Build list of combinations to run
 # package:   'bipp', 'pypeline'
@@ -171,6 +186,7 @@ combs=('pypeline_ss_none' 'bipp_ss_cpu' 'bipp_ss_gpu' 'bipp_nufft_cpu' 'bipp_nuf
 combs=('bipp_ss_cpu' 'bipp_ss_gpu' 'bipp_nufft_cpu' 'bipp_nufft_gpu')
 combs=('bipp_nufft_gpu' 'bipp_nufft_cpu' 'bipp_ss_gpu' 'bipp_ss_cpu')
 combs=('bipp_nufft_gpu')
+#combs=('bipp_ss_gpu')
 
 for comb in ${combs[@]}; do
 
@@ -182,7 +198,14 @@ for comb in ${combs[@]}; do
 
   BIPP_LOG=${OUT_DIR}/${comb}.log
 
-  OUTNAME=${comb}_lofar_rx42
+  OUTNAME=lofar_rx42_${comb}
+  OUTNAME+="_${TELESCOPE}_${PRECISION}"
+  OUTNAME+="_sidx_${TIME_START_IDX}_eidx_${TIME_END_IDX}_slipe_${TIME_SLICE_PE}_sliim_${TIME_SLICE_IM}"
+  OUTNAME+="_nlev_${BIPP_NLEV}_fne_${BIPP_FNE}_size_${WSC_SIZE}_sca_${WSC_SCALE}"
+  if [ $algo == 'nufft' ]; then
+      OUTNAME+="_nuffteps_${NUFFT_EPS}"
+  fi
+  echo "OUTNAME = ${OUTNAME}"
 
   py_script=ms_${algo}_${package}.py
 
@@ -202,18 +225,21 @@ for comb in ${combs[@]}; do
           --output_directory ${OUT_DIR} \
           --cluster izar \
           --processing_unit $proc_unit --compiler gcc \
-          --precision single \
+          --precision ${PRECISION} \
           --package ${package} \
           --nlev ${BIPP_NLEV} \
           --pixw ${WSC_SIZE} --wsc_scale ${WSC_SCALE} \
           --sigma ${SIGMA} \
           --time_slice_pe ${TIME_SLICE_PE} --time_slice_im ${TIME_SLICE_IM} \
           --time_start_idx ${TIME_START_IDX} --time_end_idx ${TIME_END_IDX} \
-          --nufft_eps 0.00001 \
+          --nufft_eps ${NUFFT_EPS} \
           --algo ${algo} \
+          --int_filters ${INT_FILTERS} \
+          --sen_filters ${SEN_FILTERS} \
           --filter_negative_eigenvalues ${BIPP_FNE} \
           --wsc_log ${WSCLEAN_LOG} \
-          --channel_id ${CHANNEL_ID} \
+          --channel_id_start ${CHANNEL_ID_START} \
+          --channel_id_end   $(expr $CHANNEL_ID_END + 1) \
           --outname ${OUTNAME} \
           |& tee ${BIPP_LOG}
   fi
@@ -225,8 +251,6 @@ for comb in ${combs[@]}; do
       [ -f $sky_file ] && sky_opt="--sky_file $sky_file"
       echo sky_opt = $sky_opt
       
-      outname="${TELESCOPE}_${algo}_${package}_${proc_unit}_${BIPP_NLEV}_${BIPP_FNE}_wsc_casa_bb"
-
       if [[ 1 == 1 ]]; then
           python plots.py \
                  --bb_grid  ${OUT_DIR}/${OUTNAME}_I_lsq_eq_grid.npy \
@@ -240,7 +264,7 @@ for comb in ${combs[@]}; do
                  --wsc_size ${WSC_SIZE} --wsc_scale ${WSC_SCALE} \
                  $sky_opt \
                  --flip_lr \
-                 --outname $outname
+                 --outname $OUTNAME
       fi
       
       if [ -f $sky_file ]; then
