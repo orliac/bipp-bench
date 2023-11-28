@@ -23,7 +23,7 @@ def get_spec_dictionary_from_list(specs):
 #
 def list_directories(path):
     return [ name for name in os.listdir(path) 
-             if os.path.isdir(os.path.join(path, name)) and name != '__pycache__' ]
+             if os.path.isdir(os.path.join(path, name)) and name != '__pycache__' and name[0] != '_' ]
 
 
 # Compute the RMSE between two images
