@@ -13,7 +13,6 @@ def get_args():
     p.add_argument("--time_start_idx", default=0, help="Index of first epoch to process.", type=int)
     p.add_argument("--time_end_idx",   default=1, help="Index of last epoch to process.", type=int)
     p.add_argument("--time_slice",     default=1, help="Time index slicing", type=int)
-    p.add_argument("--channel_id",     default=0, help="Channel ID to consider", type=int)
     p.add_argument("--time_file", required=True, help="Path to file containing start and end datetimes to process in CASA format.")
     args = p.parse_args()
     
@@ -24,14 +23,12 @@ def get_args():
     return args
 
 
-def times(msf, channel_id, time_id, column):
+def times(msf, time_id, column):
         """
         Extract datetimes
 
         Parameters
         ----------
-        channel_id : array-like(int) or slice
-            Several CHANNEL_IDs from :py:attr:`~pypeline.phased_array.util.measurement_set.MeasurementSet.channels`.
         time_id : int or slice
             Several TIME_IDs from :py:attr:`~pypeline.phased_array.util.measurement_set.MeasurementSet.time`.
         column : str
@@ -97,4 +94,4 @@ if __name__ == "__main__":
     #print(args)
 
     time_id = slice(args.time_start_idx, args.time_end_idx, args.time_slice)
-    times(args.ms, args.channel_id, time_id, args.data_col)
+    times(args.ms, time_id, args.data_col)
