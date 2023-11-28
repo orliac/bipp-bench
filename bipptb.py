@@ -10,6 +10,45 @@ from astropy import units as u
 from astropy.coordinates import Angle
 
 
+# Copied from BIPP
+def centroid_to_intervals(centroid, fne):
+    r"""
+    Convert centroid to invervals as required by VirtualVisibilitiesDataProcessingBlock.
+
+    Args
+        centroid: Optional[np.ndarray]
+            (N_centroid) centroid values. If None, [0, max_float] is returned.
+
+    Returns
+        intervals: np.ndarray
+         (N_centroid, 2) Intervals matching the input with lower and upper bound.
+    """
+    if centroid is None or centroid.size <= 1:
+        return numpy.array([[0, numpy.finfo("f").max]])
+    if fne:
+        intervals = numpy.empty((centroid.size, 2))
+    else:
+        intervals = numpy.empty((centroid.size + 1, 2))
+    sorted_idx = numpy.argsort(centroid)
+    sorted_centroid = centroid[sorted_idx]
+    for i in range(centroid.size):
+        idx = sorted_idx[i]
+        if idx == 0:
+            intervals[i, 0] = 0
+        else:
+            intervals[i, 0] = (sorted_centroid[idx] + sorted_centroid[idx - 1]) / 2
+
+        if idx == centroid.size - 1:
+            intervals[i, 1] = numpy.finfo("f").max
+        else:
+            intervals[i, 1] = (sorted_centroid[idx] + sorted_centroid[idx + 1]) / 2
+    if not fne:
+        intervals[centroid.size, 0] = numpy.finfo("f").min
+        intervals[centroid.size, 1] = 0
+
+    return intervals
+
+
 def dump_json(info):
     #print(info)
     stats = { 
@@ -146,10 +185,17 @@ def check_args(args_in):
                         type=lambda x: bool(strtobool(x)), default=True)
     parser.add_argument("--debug", help="Switch to debugging mode (read S from dumped .npy)",
                         default=False, required=False, action='store_true')
-    parser.add_argument("--channel_id", help="ID of channel to process",
-                        required=True, type=int)
+    parser.add_argument("--channel_id_start", help="ID of first channel to process", required=True, type=int)
+    parser.add_argument("--channel_id_end", help="ID of last channel to process", required=True, type=int)
     parser.add_argument("--outname", help="Basename for output files", required=True, type=str)
     parser.add_argument("--maxuvw_m", help="Maximum uvw baseline length to consider [m]", required=False, type=float)
+    parser.add_argument("--int_filters", help="Filters to apply in intensity imaging", required=True, type=str)
+    parser.add_argument("--sen_filters", help="Filters to apply in sensitivity imaging", nargs='?', const='', required=False, type=str, default='')
+    parser.add_argument("--check_alt_gram", help="Check Gram matrix implementation between CPU and GPU",
+                        required=False, default=False, action='store_true')
+    parser.add_argument("--dump_tests_json", help="Dump BIPP JSON input and output files for tests",
+                        required=False, default=False, action='store_true')
+    
 
     args = parser.parse_args()
     """
@@ -178,6 +224,7 @@ def check_args(args_in):
     if args.package == "pypeline" and args.sigma == 1.0:
         print('-W- pypeline reset of args.sigma from 1.0 to 0.99999')
         args.sigma = 0.99999
+        args.sigma = 1.0
 
     args.nbits = 32 if args.precision == 'single' else 64
 
@@ -187,8 +234,18 @@ def check_args(args_in):
     if not os.path.exists(args.output_directory):
         os.makedirs(args.output_directory)
 
+    # Get list of unique filters from '-' separated filters string
+    args.int_filters = list(set(args.int_filters.split('-')))
+    if args.sen_filters == '':
+        args.sen_filters = None
+    else:
+        args.sen_filters = list(set(args.sen_filters.split('-')))
 
     print("-I- Command line input -----------------------------")
+    print("-I- Package        =", args.package)
+    print("-I- Algorithm      =", args.algo)
+    print("-I- Inten. filters =", args.int_filters)
+    print("-I- Sensi. filters =", args.sen_filters)
     print("-I- MS file        =", args.ms_file)
     print("-I- Telescope      =", args.telescope)
     print("-I- precision      =", args.precision)
@@ -206,6 +263,7 @@ def check_args(args_in):
     print("-I- NUFFT epsilon  =", args.nufft_eps)
     print("-I- Output dir.    =", args.output_directory)
     print("-I- Filter neg eig =", args.filter_negative_eigenvalues)
+    print("-I- Check alt Gram =", args.check_alt_gram)
     print("-I- ------------------------------------------------")
 
     return args
