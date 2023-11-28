@@ -21,9 +21,29 @@ import pypeline.phased_array.bluebild.parameter_estimator as bb_pe
 import pypeline.phased_array.data_gen.source as source
 import pypeline.phased_array.measurement_set as measurement_set
 from pypeline.util import frame
+import json
 
 import bipptb
 import plots
+
+def reshape_and_scale_uvw(wl, UVW):
+    r"""
+    Rescale by 2 * pi / wl and reshape to match NUFFT Synthesis expected input shape.
+
+    Args
+        wl: astropy.coordinates.SkyCoord
+            Center of the FoV to which the local frame is attached.
+        UVW: np.ndarray
+            (N_antenna, N_antenna, 3) UVW coordinates expressed in the local UVW frame.
+
+    Returns
+        UVW: np.ndarray
+            (N_antenna**2, 3) Rescaled and reshaped UVW as required by NUFFT Synthesis
+    """
+    # transpose because of coloumn major input format for bipp c++
+    UVW = np.array(UVW.transpose((1, 0, 2)).reshape(-1, 3), order="F")
+    UVW *= 2 * np.pi / wl
+    return UVW
 
 print(f"-I- SLURM_CPUS_PER_TASK = {os.environ['SLURM_CPUS_PER_TASK']}")
 print(f"-I- OMP_NUM_THREADS     = {os.environ['OMP_NUM_THREADS']}")
@@ -72,10 +92,9 @@ print(f"-I- ms.field_center = {ms.field_center}")
 gram = bb_gr.GramBlock(ctx)
 
 # Observation (old fashion, single channel)
-channel_id = args.channel_id
-frequency = ms.channels["FREQUENCY"][channel_id]
-print(f"-I- frequency = {frequency}")
-wl = constants.speed_of_light / frequency.to_value(u.Hz)
+channel_ids = np.arange(args.channel_id_start, args.channel_id_end)
+print("-I channel_ids = ", channel_ids)
+
 
 # Grids
 print(f"FoV = {FoV:.6f} rad")
@@ -85,7 +104,6 @@ offset = lim / (args.pixw / 2) * 0.5
 print(f"half pixel offset = {offset:.6f}")
 grid_slice1 = np.linspace(-lim - offset, lim - offset, args.pixw)
 grid_slice2 = np.linspace(-lim + offset, lim + offset, args.pixw)
-#grid_slice = np.linspace(-lim, lim, args.pixw)
 l_grid, m_grid = np.meshgrid(grid_slice2, grid_slice1)
 n_grid = np.sqrt(1 - l_grid ** 2 - m_grid ** 2)  # No -1 if r on the sphere !
 lmn_grid = np.stack((l_grid, m_grid, n_grid), axis=0)
@@ -108,12 +126,11 @@ IFPE_TVIS  = 0
 IFPE_TPLOT = 0
 i_it = 0
 t0 = time.time()
-for t, f, S, _ in ms.visibilities(channel_id=[channel_id], time_id=time_id_pe, column="DATA"):
+for t, f, S in ms.visibilities(channel_id=channel_ids, time_id=time_id_pe, column="DATA"):
     t1 = time.time()
     t_vis = t1 - t0
     IFPE_TVIS += t_vis
-    wl_   = constants.speed_of_light / f.to_value(u.Hz)
-    if wl_ != wl: raise Exception("Mismatch on frequency")
+    wl   = constants.speed_of_light / f.to_value(u.Hz)
     XYZ  = ms.instrument(t)
     t2   = time.time()
     W    = ms.beamformer(XYZ, wl)
@@ -133,6 +150,12 @@ for t, f, S, _ in ms.visibilities(channel_id=[channel_id], time_id=time_id_pe, c
 N_eig, c_centroid = I_est.infer_parameters()
 print("-I- IFPE N_eig =", N_eig)
 print("-I- c_centroid =\n", c_centroid)
+intervals = bipptb.centroid_to_intervals(c_centroid, args.filter_negative_eigenvalues)
+print("-I- intervals:\n", intervals)
+#intervals = np.array([[4.322383e+03, 3.402823e+38],
+#                      [0.000000e+00, 4.322383e+03]])
+#print("-I- intervals:\n", intervals)
+
 
 ifpe_e = time.time()
 IFPE = ifpe_e - ifpe_s
@@ -147,6 +170,16 @@ N_antenna, N_station = W.shape
 print("-I- N_antenna =", N_antenna)
 print("-I- N_station =", N_station)
 
+if args.dump_tests_json:
+    if args.nbits == 32:
+        dtype_f = np.float32
+        dtype_c = np.complex64
+        precision = 'single'
+    else:
+        dtype_f = np.float64
+        dtype_c = np.complex128
+        precision = 'double'
+    data_all = []
 
 # Imaging
 ifim_s = time.time()
@@ -160,7 +193,7 @@ IFIM_TVIS  = 0
 IFIM_TPLOT = 0
 i_it = 0
 t0 = time.time()
-for t, f, S, uvw in ms.visibilities(channel_id=[channel_id], time_id=time_id_im, column="DATA"):
+for t, f, S in ms.visibilities(channel_id=channel_ids, time_id=time_id_im, column="DATA"):
     t1 = time.time()
     t_vis = t1 - t0
     IFIM_TVIS += t_vis
@@ -177,7 +210,10 @@ for t, f, S, uvw in ms.visibilities(channel_id=[channel_id], time_id=time_id_im,
     t6 = time.time()
     n_vis = np.count_nonzero(S.data)
     IFIM_NVIS += n_vis
-
+    
+    UVW_baselines_t = ms.instrument.baselines(t, uvw=True, field_center=ms.field_center)
+    uvw = reshape_and_scale_uvw(wl, UVW_baselines_t)
+    
     if i_it == 0:
         t_plot = time.time()
         G = gram(XYZ, W, wl)
@@ -189,6 +225,15 @@ for t, f, S, uvw in ms.visibilities(channel_id=[channel_id], time_id=time_id_im,
         t_plot = time.time() - t_plot
         print(f"-W- Plotting took {t_plot:.3f} sec.")
         IFIM_TPLOT += t_plot
+
+    if args.dump_tests_json:
+        data_all.append({"xyz": np.transpose(XYZ.data).astype(dtype_f, copy=False).tolist(),
+                         "uvw": np.transpose(uvw).astype(dtype_f, copy=False).tolist(),
+                         "w_real": np.transpose(W.data.real).astype(dtype_f, copy=False).tolist(),
+                         "w_imag": np.transpose(W.data.imag).astype(dtype_f, copy=False).tolist(),
+                         "s_real": np.transpose(S.data.real).astype(dtype_f, copy=False).tolist(),
+                         "s_imag": np.transpose(S.data.imag).astype(dtype_f, copy=False).tolist()})
+    
 
     print(f"-T- it {i_it:4d}:  vis {t_vis:.3f},  xyz {t2-t1:.3f}, w {t3-t2:.3f}  fd = {t4-t3:.3f}  i_dp = {t5-t4:.3f}, i_mfs = {t6-t5:.3f}, tot {t6-t0:.3f}")
     t0 = time.time()
@@ -213,7 +258,7 @@ if 1 == 0:
     # Parameter Estimation
     sfpe_s = time.time()
     S_est = bb_pe.SensitivityFieldParameterEstimator(sigma=args.sigma)
-    for t, f, S in ms.visibilities(channel_id=[channel_id], time_id=slice(None, None, args.time_slice_pe), column="DATA"):
+    for t, f, S in ms.visibilities(channel_id=channel_ids, time_id=slice(None, None, args.time_slice_pe), column="DATA"):
         wl   = constants.speed_of_light / f.to_value(u.Hz)
         XYZ  = ms.instrument(t)
         W    = ms.beamformer(XYZ, wl)
@@ -230,7 +275,7 @@ if 1 == 0:
     n_vis_sfim = 0
     S_dp  = bb_dp.SensitivityFieldDataProcessorBlock(N_eig, ctx)
     S_mfs = bb_sd.Spatial_IMFS_Block(wl, px_grid, 1, args.nbits, ctx)
-    for t, f, S in ms.visibilities(channel_id=[channel_id], time_id=slice(None, None, args.time_slice_im), column="DATA"):
+    for t, f, S in ms.visibilities(channel_id=channel_ids, time_id=slice(None, None, args.time_slice_im), column="DATA"):
         wl   = constants.speed_of_light / f.to_value(u.Hz)
         XYZ  = ms.instrument(t)
         W    = ms.beamformer(XYZ, wl)
@@ -242,15 +287,58 @@ if 1 == 0:
     I_std_eq = s2image.Image(I_std.data / S.data / i_it, I_std.grid)
     I_lsq_eq = s2image.Image(I_lsq.data / S.data / i_it, I_lsq.grid)
     sfim_e = time.time()
+    
 else:
-    I_std_eq = s2image.Image(I_std.data / i_it, I_std.grid)
-    I_lsq_eq = s2image.Image(I_lsq.data / i_it, I_lsq.grid)
+    #I_std_eq = s2image.Image(I_std.data / i_it, I_std.grid)
+    #I_lsq_eq = s2image.Image(I_lsq.data / i_it, I_lsq.grid)
+    I_std_eq = s2image.Image(I_std.data / IFIM_NVIS, I_std.grid)
+    print(I_lsq.data.dtype, type(IFIM_NVIS))
+    I_lsq_eq = s2image.Image(I_lsq.data / IFIM_NVIS, I_lsq.grid)
+    print(f"-D- I_lsq_eq.dtype = {I_lsq_eq.data.dtype}, max = {np.max(I_lsq_eq.data)}")
+
     sfpe_s = sfpe_e = sfim_s = sfim_e = 0
 
 print(f"#@#SFIM {sfim_e - sfim_s:.3f} sec")
 
 jkt0_e = time.time()
 print(f"#@#TOT {jkt0_e - jkt0_s:.3f} sec\n")
+
+
+if args.dump_tests_json:
+    Nb, Ne = V.shape
+    Na, Nb = W.shape
+    Nc, Nh, Nw = px_grid.shape
+    
+    json_input = {'wl': wl,
+                  'eps': args.nufft_eps,
+                  'n_antenna': Na,
+                  'n_beam': Nb,
+                  'n_eig_int': Ne,
+                  'intervals_int': intervals.astype(dtype_f, copy=False).tolist(),
+                  'data': data_all
+    }
+
+    json_path = os.path.join(args.output_directory, f"{args.telescope.lower()}_ss_input_pypeline_{args.precision}.json")
+    with open(json_path, "w") as json_file:
+        json.dump(json_input, json_file)
+    print("-I- wrote JSON input file", json_path)
+
+    nInt = intervals.shape[0]
+    
+    json_output = {'pixel_x': px_grid[0,:,:].flatten(order='F').astype(dtype_f, copy=False).tolist(),
+                   'pixel_y': px_grid[1,:,:].flatten(order='F').astype(dtype_f, copy=False).tolist(),
+                   'pixel_z': px_grid[2,:,:].flatten(order='F').astype(dtype_f, copy=False).tolist(),
+                   'lmn_x': lmn_grid[0,:,:].flatten(order='F').astype(dtype_f, copy=False).tolist(),
+                   'lmn_y': lmn_grid[1,:,:].flatten(order='F').astype(dtype_f, copy=False).tolist(),
+                   'lmn_z': lmn_grid[2,:,:].flatten(order='F').astype(dtype_f, copy=False).tolist(),
+                   'int_lsq': np.transpose(np.squeeze(np.vstack(np.transpose(np.vsplit(I_lsq_eq.data, nInt))))).astype(dtype_f, copy=False).tolist(),
+                   'int_std': np.transpose(np.squeeze(np.vstack(np.transpose(np.vsplit(I_std_eq.data, nInt))))).astype(dtype_f, copy=False).tolist()
+    }
+
+    json_path = os.path.join(args.output_directory, f"{args.telescope.lower()}_ss_output_pypeline_{args.precision}.json")
+    with open(json_path, "w") as json_file:
+        json.dump(json_output, json_file)
+    print("-I- wrote JSON output file", json_path)
 
 
 #EO: early exit when profiling
@@ -264,6 +352,7 @@ print("######################################################################")
 #print("-I- px_grid:", px_grid.shape, "\n", px_grid, "\n")
 #print("-I- I_lsq:\n", I_lsq.data, "\n")
 print("-I- I_lsq_eq:\n", I_lsq_eq.data, "\n")
+#print("-I- I_std_eq:\n", I_std_eq.data, "\n")
 
 print("-I- args.output_directory:", args.output_directory)
 
