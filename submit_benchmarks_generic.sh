@@ -23,7 +23,8 @@ ARGUMENT_LIST=(
     "wsc_scale"
     "precision"
     "filter_negative_eigenvalues"
-    "channel_id"
+    "channel_id_start"
+    "channel_id_end"
 )
 
 # debug line
@@ -58,7 +59,8 @@ do
         --wsc_scale)      wsc_scale="$2";      shift;;
         --precision)      precision="$2";      shift;;
         --filter_negative_eigenvalues) fne="$2"; shift;;
-        --channel_id)     channel_id="$2";        shift;;
+        --channel_id_start) channel_id_start="$2"; shift;;
+        --channel_id_end) channel_id_end="$2"; shift;;
         (--) shift; break;;
         (-*) echo "$0: error - unrecognized option $1" 1>&2; exit 1;;
         (*) break;;
@@ -79,7 +81,8 @@ done
 : ${precision:?Missing mandatory --precision option [single, double]}
 : ${telescope:?Missing mandatory --telescope option}
 : ${fne:?Missing mandatory --filter_negative_eigenvalues option}
-: ${channel_id:?Missing mandatory --channel_id option}
+: ${channel_id_start:?Missing mandatory --channel_id_start option}
+: ${channel_id_end:?Missing mandatory --channel_id_end option}
 #: ${fov_deg:?Missing mandatory --fov_deg option}
 : ${wsc_scale:?Missing mandatory --wsc_scale option}
 
@@ -152,8 +155,7 @@ python generate_benchmark_input_file.py \
     --sigma=$sigma \
     --wsc_scale=$wsc_scale \
     --algo=$algo --telescope=$telescope --filter_negative_eigenvalues=$fne \
-    --channel_id=$channel_id --outname=$outname
-
+    --channel_id_start=$channel_id_start --channel_id_end=$channel_id_end --outname=$outname
 
     
 [ $? -eq 0 ] || (echo "-E- $ python generate_benchmark_input_file.py ... failed" && exit 1)
@@ -171,6 +173,7 @@ NJOBS=$(($NJOBS-1))
 SBATCH_SH=sbatch_generic.sh
 [ -f $SBATCH_SH ] || (echo "-E- Template submission file for $package on $cluster \
 >>$SBATCH_SH<< not found" && exit 1)
+
 cp -v ${pipeline}_${algo}_${package}.py  $out_dir
 cp -v $SBATCH_SH                         $out_dir
 cp -v bipptb.py                          $out_dir
@@ -185,12 +188,14 @@ cp -v get_ms_timerange.py                $out_dir
 cp -v get_scale.py                       $out_dir
 #cp -r $ms_file                           $out_dir
 cp -v oskar_sim.py                       $out_dir
+cp -v analysis/analyze_sky.py            $out_dir
+cp -v analysis/benchtb.py                $out_dir
 
 cd $out_dir
 
 slurm_opts=$(sed "s/|/ /g" <<< $slurm_opts)
 slurm_opts="$slurm_opts --array 0-${NJOBS}"
-[ "$cluster" == "izar" ] && slurm_opts="$slurm_opts%16" ### Adapt here for max simulatneous jobs
+[ "$cluster" == "izar" ] && slurm_opts="$slurm_opts%8" ### Adapt here for max simulatneous jobs
 #[ "$cluster" == "izar" ] && slurm_opts="$slurm_opts%10" ### Adapt here for max simulatneous jobs
 echo
 echo "slurm_opts >>$slurm_opts<<"
