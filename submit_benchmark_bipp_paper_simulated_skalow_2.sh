@@ -26,7 +26,7 @@ fi
 
 #echo "__EARLY_EXIT__" && exit 1
 
-IN_DIR=/work/ska/papers/bipp/sim_skalow/data
+#IN_DIR=/work/ska/papers/bipp/sim_skalow/data
 #MS_BASENAME=test64.MS
 #MS_FILE=${IN_DIR}/${MS_BASENAME}
 #[ -d $MS_FILE ] || (echo "-E- MS dataset $MS_FILE not found" && exit 1)
@@ -39,7 +39,11 @@ MS_BASENAME=oskar_9_point_sources
 # Dev: 1 socket / Prod: 2 sockets
 #SLURM_OPTS="--partition=gpu|--gres=gpu:1|--time=00-02:00:00|--cpus-per-task=20|--mem=180G|--qos=scitas"
 #SLURM_OPTS="--partition=test|--gres=gpu:1|--time=00-00:30:00|--cpus-per-task=20|--mem=150G|--qos=scitas"
-SLURM_OPTS="--partition=gpu|--gres=gpu:2|--time=00-12:00:00|--cpus-per-task=40|--mem=360G|--qos=scitas"
+#SLURM_OPTS="--partition=gpu|--gres=gpu:2|--time=00-10:00:00|--cpus-per-task=40|--mem=360G|--qos=scitas"     #pypeline
+#SLURM_OPTS="--partition=gpu|--gres=gpu:2|--time=00-04:00:00|--cpus-per-task=40|--mem=360G|--qos=scitas"     #pypeline
+SLURM_OPTS="--partition=gpu|--gres=gpu:2|--time=00-01:00:00|--cpus-per-task=40|--mem=360G|--qos=scitas"     #pypeline
+
+#SLURM_OPTS="--partition=gpu|--gres=gpu:1|--time=00-00:20:00|--cpus-per-task=20|--mem=180G|--qos=scitas"
 #SLURM_OPTS="--partition=build|--gres=gpu:1|--time=00-01:00:00|--cpus-per-task=20|--mem=80G|--qos=scitas"
 #SLURM_OPTS="--partition=debug|--gres=gpu:1|--time=00-01:00:00|--cpus-per-task=20|--mem=80G|--qos=scitas"
 
@@ -57,7 +61,7 @@ FNE=0
 BENCH_NAME=${MS_BASENAME}_${TIME_TAG}_${PRECISION}_${FNE}
 
 COMMON="--bench-name $BENCH_NAME"
-COMMON+=" --outdir /work/ska/papers/bipp/sim_skalow/benchmarks-2"
+COMMON+=" --outdir /work/ska/papers/bipp/sim_skalow/benchmarks-4"
 COMMON+=" --pipeline $PIPELINE"
 #COMMON+=" --ms-file $MS_FILE"
 COMMON+=" --cluster $CLUSTER"
@@ -73,7 +77,7 @@ COMMON+=" --channel_id 0"
 echo "COMMON =" $COMMON
 
 # Reference (pypeline python cpu)
-sh submit_benchmarks_generic.sh --slurm-opts "$SLURM_OPTS" $COMMON --package pypeline --proc-unit none --compiler gcc  --algo ss
+#sh submit_benchmarks_generic.sh --slurm-opts "$SLURM_OPTS" $COMMON --package pypeline --proc-unit none --compiler gcc  --algo ss
 
 # pypeline
 #sh submit_benchmarks_generic.sh --slurm-opts "$SLURM_OPTS" $COMMON --package pypeline --proc-unit gpu  --compiler cuda --algo ss
@@ -82,8 +86,8 @@ sh submit_benchmarks_generic.sh --slurm-opts "$SLURM_OPTS" $COMMON --package pyp
 #sh submit_benchmarks_generic.sh --slurm-opts "$SLURM_OPTS" $COMMON --package pypeline --proc-unit cpu  --compiler gcc  --algo nufft
 
 # bipp
-#sh submit_benchmarks_generic.sh --slurm-opts "$SLURM_OPTS" $COMMON --package bipp     --proc-unit gpu  --compiler cuda --algo ss
 #sh submit_benchmarks_generic.sh --slurm-opts "$SLURM_OPTS" $COMMON --package bipp     --proc-unit cpu  --compiler gcc  --algo ss
+#sh submit_benchmarks_generic.sh --slurm-opts "$SLURM_OPTS" $COMMON --package bipp     --proc-unit gpu  --compiler cuda --algo ss
 #sh submit_benchmarks_generic.sh --slurm-opts "$SLURM_OPTS" $COMMON --package bipp     --proc-unit gpu  --compiler cuda --algo nufft
 #sh submit_benchmarks_generic.sh --slurm-opts "$SLURM_OPTS" $COMMON --package bipp     --proc-unit cpu  --compiler gcc  --algo nufft
 
