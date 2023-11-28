@@ -26,7 +26,8 @@ parser.add_argument("--fov_deg",        help="Field of view in degree", required
 parser.add_argument("--algo",           help="Algorithm to use (ss, nufft)", required=True)
 parser.add_argument("--telescope",      help="Telescope", required=True)
 parser.add_argument("--filter_negative_eigenvalues", help="Filter negative eigenvalues? 0/1", required=True, choices=["0", "1"])
-parser.add_argument("--channel_id",     help="Channel ID to process", required=True, type=int)
+parser.add_argument("--channel_id_start", help="Start channel ID to process", required=True, type=int)
+parser.add_argument("--channel_id_end",   help="End channel ID to process", required=True, type=int)
 parser.add_argument("--outname",        help="Prefix of output files", required=True, type=str)
 
 args = parser.parse_args()
@@ -39,6 +40,9 @@ if args.package == "bipp" and args.proc_unit == "none":
 # Set up jobs to run in the benchmark
 nLevels   = [1, 2, 4, 8]
 pixWidths = [256, 512, 1024, 2048] ### equivalent of wsc_size
+#nLevels   = [1]
+#pixWidths = [256] ### equivalent of wsc_size
+
 nStations = [0] # 0 == all stations
 
 import subprocess
@@ -53,8 +57,10 @@ with open(args.in_file, 'w') as f:
             cli_ += f" --time_start_idx {args.time_start_idx} --time_end_idx {args.time_end_idx}"
             cli_ += f" --time_slice_pe {args.time_slice_pe} --time_slice_im {args.time_slice_im}"
             cli_ += f" --sigma {args.sigma} --algo {args.algo} --telescope {args.telescope}"
-            cli_ += f" --channel_id {args.channel_id} --outname {args.outname} --nufft_eps 0.00001"
+            cli_ += f" --channel_id_start {args.channel_id_start} --channel_id_end {args.channel_id_end + 1}"
+            cli_ += f" --outname {args.outname} --nufft_eps 0.00001"
             cli_ += f" --filter_negative_eigenvalues {args.filter_negative_eigenvalues}"
+            cli_ += f" --int_filters LSQ"
             cli_ += f" " #keep space at the end!
             
             if nsta == 0: # case all stations
