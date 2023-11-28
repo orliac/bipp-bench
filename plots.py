@@ -244,8 +244,6 @@ def plot_wsc_casa_bb(wsc_fits, wsc_log, casa_fits, casa_log, bb_grid, bb_data, b
 
     # Define output files
     basename = os.path.join(outdir, outname)
-    file_png      = basename + '.png'
-    file_png_low  = basename + '_low.png'
     file_misc = basename + '.misc'
     file_json = basename + '.json'
     fh_sky_out = None
@@ -448,11 +446,13 @@ def plot_wsc_casa_bb(wsc_fits, wsc_log, casa_fits, casa_log, bb_grid, bb_data, b
     cbar = plt.colorbar(cax=cb_ax)
     cbar.ax.tick_params(size=0)
     cbar.set_label("Intensity difference [Jy/beam]", rotation=-90, va='bottom')
-    
-    plt.savefig(file_png, bbox_inches='tight', dpi=1400)
-    print("-I-", file_png)
-    plt.savefig(file_png_low, bbox_inches='tight', dpi=400)
-    print("-I-", file_png_low)
+
+    #for dpi in 1400, 400, 200, 100:
+    for dpi in 200, 100:
+        for fmt in '.png', '.pdf':
+            plot_file = basename + '_dpi_'+ str(dpi) + fmt
+            plt.savefig(plot_file, bbox_inches='tight', dpi=dpi)
+            print("-I-", plot_file)
 
     casa_wsc_txt, casa_wsc_json = diff_stats_txt(casa_data, 'casa', wsc_data,  'wsc')
     bb_wsc_txt,   bb_wsc_json   = diff_stats_txt(bb_data,   'bb',   wsc_data,  'wsc')
@@ -1573,6 +1573,7 @@ def plot_beamweight_matrix(X, filename, outdir, title):
 
 
 def plot_gram_matrix(X, filename, outdir, title):
+    print("-D-", outdir, filename)
     plot_complex_matrix(X, filename, outdir, title, 'Beam index', 'Beam index')
 
 
