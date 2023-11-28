@@ -152,9 +152,6 @@ print("-I- IFPE N_eig =", N_eig)
 print("-I- c_centroid =\n", c_centroid)
 intervals = bipptb.centroid_to_intervals(c_centroid, args.filter_negative_eigenvalues)
 print("-I- intervals:\n", intervals)
-#intervals = np.array([[4.322383e+03, 3.402823e+38],
-#                      [0.000000e+00, 4.322383e+03]])
-#print("-I- intervals:\n", intervals)
 
 
 ifpe_e = time.time()
