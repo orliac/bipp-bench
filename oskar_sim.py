@@ -23,10 +23,9 @@ parser.add_argument('--telescope_lat', help="Latitude of telescope", required=Tr
 parser.add_argument('--phase_centre_ra_deg',  help="Phase centre's right ascension [deg]", required=True, type=float)
 parser.add_argument('--phase_centre_dec_deg', help="Phase centre's declination [deg] ",    required=True, type=float)
 parser.add_argument('--out_name', help="Output name", required=True)
-
-
+parser.add_argument('--single_source', help="Only a single source in the center", required=False, action='store_true')
 args = parser.parse_args()
-
+print("oskar_sim args =", args)
 
 # Basic settings. (Note that the sky model is set up later.)
 #        "correlation_type": 'both'
@@ -101,7 +100,7 @@ elif args.wsc_scale == 16:
 elif args.wsc_scale == 32:
     cdelt1 = -0.0088888888
 else:
-    raise Exception("Unknown value for args.wsc_scale")
+    raise Exception("-E- Unknown value for args.wsc_scale")
 
 # Set up WCS projection
 # ---------------------
@@ -131,7 +130,10 @@ f.write(f"#origin: {origin}\n")
 
 sdp = 3 * size / 8 # axis source distance in pixels
 
-sources = ((cfov_x - sdp, cfov_y + sdp), (cfov_x, cfov_y + sdp), (cfov_x + sdp, cfov_y + sdp),
+if args.single_source:
+    sources = ((cfov_x, cfov_y),)
+else:
+    sources = ((cfov_x - sdp, cfov_y + sdp), (cfov_x, cfov_y + sdp), (cfov_x + sdp, cfov_y + sdp),
            (cfov_x - sdp, cfov_y),       (cfov_x, cfov_y),       (cfov_x + sdp, cfov_y),
            (cfov_x - sdp, cfov_y - sdp), (cfov_x, cfov_y - sdp), (cfov_x + sdp, cfov_y - sdp))
 
