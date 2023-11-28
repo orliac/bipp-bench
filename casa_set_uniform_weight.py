@@ -4,6 +4,19 @@ import argparse
 def ms_set_weight_to(ms_file, w):
     print("-I- ms_file:", ms_file)
 
+    cols_to_del = ['WEIGHT_SPECTRUM', 'SIGMA_SPECTRUM']
+    
+    tb.open(ms_file, nomodify=False)
+    cols = tb.colnames()
+    #print("-D- Before:\n", cols)
+    for col in cols_to_del:
+        if col in cols:
+            print(f"-D- found col to del {col}")
+            tb.removecols([col])
+        else:
+            print(f"-D- column to delete {col} not found in MS")
+    tb.close()
+    
     #weight_spectrum not supported!
     ms.open(ms_file, nomodify=False)
     rec = ms.getdata(["weight", "sigma"])
@@ -11,13 +24,6 @@ def ms_set_weight_to(ms_file, w):
     rec['sigma'][:,:] = 1
     ms.putdata(rec)
     ms.close()
-    
-    tb.open(ms_file, nomodify=False)
-    print("-D- Before:\n", tb.colnames())
-    tb.removecols(['WEIGHT_SPECTRUM'])
-    tb.removecols(['SIGMA_SPECTRUM'])
-    print("-D- After:\n", tb.colnames())
-
 
 if __name__ == "__main__":
 
