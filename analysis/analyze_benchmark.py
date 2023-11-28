@@ -64,6 +64,7 @@ def define_all_solutions():
 
     return all_sols
 
+
 # Plot camemberts 
 def camemberts(nsta, nlev, pixw, sol):
     print(f"\n\n@@@ camemberts nsta={nsta}, nlev={nlev} @@@")
@@ -92,12 +93,19 @@ def camemberts(nsta, nlev, pixw, sol):
     print(f"t_overhead = {t_overhead:.3f}")
     timings['overhead'] = t_overhead
 
-    timings["Processing (PE)"]   = timings.pop('ifpe_proc')
-    timings["Processing (IM)"]   = timings.pop('ifim_proc')
-    timings["Visibilities (PE)"] = timings.pop('ifpe_vis')
-    timings["Visibilities (IM)"] = timings.pop('ifim_vis')
-    timings["Plotting"]          = timings.pop('ifim_plot')
-    timings["Others"]            = timings.pop('overhead')
+    #timings["Processing\n(PE)"]   = timings.pop('ifpe_proc')
+    #timings["Processing\n(IM)"]   = timings.pop('ifim_proc')
+    #timings["Visibilities\n(PE)"] = timings.pop('ifpe_vis')
+    #timings["Visibilities\n(IM)"] = timings.pop('ifim_vis')
+    #timings["Plotting"]          = timings.pop('ifim_plot')
+    #timings["Others"]            = timings.pop('overhead')
+
+    timings["Proc. (PE)"] = timings.pop('ifpe_proc')
+    timings["Proc. (IM)"] = timings.pop('ifim_proc')
+    timings["Vis. (PE)"]  = timings.pop('ifpe_vis')
+    timings["Vis. (IM)"]  = timings.pop('ifim_vis')
+    timings["Plotting"]   = timings.pop('ifim_plot')
+    timings["Others"]     = timings.pop('overhead')
 
     colors = ['orangered', 'orangered',
               'lime', 'lime',
@@ -110,17 +118,29 @@ def camemberts(nsta, nlev, pixw, sol):
     def func(pct, allvals):
         sum_ = sum(allvals)
         abs_ = pct * 0.01 * sum_
-        return f"{pct:.1f}%\n({abs_:.1f} s)"
+        #return f"{pct:.1f} %\n{abs_:.1f} s"
+        return f"{pct:.1f} %"
 
-    ax.pie(sizes, labels=labels, autopct=lambda pct: func(pct, sizes),
+    patches, texts, pcts = ax.pie(sizes, labels=labels, autopct=lambda pct: func(pct, sizes),
            startangle=90, colors=colors,
            wedgeprops = {"edgecolor" : "silver",
                          'linewidth': 1,
-                         'antialiased': True})
-    plt.title(f"Image size: {pixw} pixels, tts: {t_real} sec")
+                         'antialiased': True},
+           textprops={"fontsize": 14},
+           pctdistance=0.7,
+           labeldistance=1.1)
+    plt.setp(pcts, color='black', fontweight='bold', fontsize=11)
+    plt.title(f"Image size: {pixw} pixels, TTS: {t_real} sec", fontsize=18)
     plt.tight_layout()
-    plt.savefig(f"camembert_{sol}_{nlev}_{pixw}.png")
+    #plt.savefig(f"camembert_{sol}_{nlev}_{pixw}.png")
+    for dpi in 100,:
+        for fmt in '.png', '.pdf':
+            basename = f"pie_tts_{sol}_{nlev}_{pixw}"
+            plot_file = os.path.join(args.out_dir, basename + '_dpi_'+ str(dpi) + fmt)
+            plt.savefig(plot_file, bbox_inches='tight', dpi=dpi)
+            print("-I-", plot_file)
 
+    
     fig, axes = plt.subplots(nrows=1, ncols=4)
     plt.subplots_adjust(hspace=0)
     fig.set_figwidth(16)
@@ -175,12 +195,18 @@ def camemberts(nsta, nlev, pixw, sol):
     ax.legend(wedges, labels, loc="lower center", ncol=6,
               bbox_to_anchor=(0.15, -0.05, 0.7, 0.5), frameon=False)
     plt.tight_layout()
-    plt.savefig(f"camembert_{sol}_{nlev}.png")
+    
+    for dpi in 100,:
+        for fmt in '.png', '.pdf':
+            basename = f"pie_tts_{sol}_{nlev}"
+            plot_file = os.path.join(args.out_dir, basename + '_dpi_'+ str(dpi) + fmt)
+            plt.savefig(plot_file, bbox_inches='tight', dpi=dpi)
+            print("-I-", plot_file)
 
 
-def plot_wsclean_vs_bipp(nsta, nlev, pixws, sols):
+def plot_tts_and_sf(nsta, nlev, pixws, sols):
 
-    print(f"\n\n@@@ plot_wsclean_vs_bipp nsta={nsta}, nlev={nlev} @@@")
+    print(f"\n\n@@@ plot_tts_an_sf nsta={nsta}, nlev={nlev} @@@")
 
     #print(sols)
 
@@ -243,9 +269,9 @@ def plot_wsclean_vs_bipp(nsta, nlev, pixws, sols):
     y_max = np.power(10, np.ceil(np.log10(t_max)))
 
     fig, ax = plt.subplots()
-    ax.set_yscale("log", basey=10)
+    ax.set_yscale("log", base=10)
     ax.set_ylim(y_min, y_max)
-    ax.set_xscale("log", basex=2)
+    ax.set_xscale("log", base=2)
     ax.set_xlim(x_min, x_max)
 
     for sol in my_sols:
@@ -290,15 +316,19 @@ def plot_wsclean_vs_bipp(nsta, nlev, pixws, sols):
 
     ax.set(xlabel='Image width [pixel]', ylabel='Time to solution [s]')
 
-    ax.legend(fontsize=8)
-
     msg = f"{nlev} energy level" if nlev == 1 else f"{nlev} energy levels"
-    ax.text(x_min * 1.03, y_min * 1.1, msg, family='monospace')
+    ax.legend(fontsize=8, title=msg)
+    ax.get_legend().get_title().set_fontsize('14')
 
     for axis in [ax.xaxis]:
         axis.set_major_formatter(ScalarFormatter())
 
-    fig.savefig(f"tts_{nlev}_energy_levels.png")
+    for dpi in 100,:
+        for fmt in '.png', '.pdf':
+            basename = f"tts_{nlev}_energy_levels"
+            plot_file = os.path.join(args.out_dir, basename + '_dpi_'+ str(dpi) + fmt)
+            plt.savefig(plot_file, bbox_inches='tight', dpi=dpi)
+            print("-I-", plot_file)
 
 
     ### Speedup factors
@@ -306,8 +336,8 @@ def plot_wsclean_vs_bipp(nsta, nlev, pixws, sols):
     print("#### Speedup factors plots")
     print(nlev)
     fig, ax = plt.subplots()
-    ax.set_yscale("log", basey=10)
-    ax.set_xscale("log", basex=2)
+    ax.set_yscale("log", base=10)
+    ax.set_xscale("log", base=2)
     ax.set_xlim(x_min, x_max)
 
     sol_ref = 'pcs'
@@ -336,19 +366,27 @@ def plot_wsclean_vs_bipp(nsta, nlev, pixws, sols):
 
 
     ax.set(xlabel='Image width [pixel]', ylabel='Speedup factor [-]')
-    ax.legend(fontsize=8)
     msg = f"{nlev} energy level" if nlev == 1 else f"{nlev} energy levels"
-    ax.text(600, 220, msg, family='monospace')
+    ax.legend(fontsize=8, title=msg)
+    ax.get_legend().get_title().set_fontsize('14')
+    #ax.text(600, 220, msg, family='monospace')
     for axis in [ax.xaxis]:
         axis.set_major_formatter(ScalarFormatter())
-    fig.savefig(f"speedups_{nlev}_energy_levels.png")
+
+    for dpi in 100,:
+        for fmt in '.png', '.pdf':
+            basename = f"speedups_{nlev}_energy_levels"
+            plot_file = os.path.join(args.out_dir, basename + '_dpi_'+ str(dpi) + fmt)
+            plt.savefig(plot_file, bbox_inches='tight', dpi=dpi)
+            print("-I-", plot_file)
+
 
 
 # Min, max, mean, std, rms
 def check_solutions_consistency(nsta, nlev, pixw):
     print(f"\n@@@ check_solutions_consistency nsta={nsta}, nlev={nlev}, pixw={pixw} @@@")
     paths_sols = benchtb.get_list_of_solutions(bench_root=args.bench_root, nsta=nsta, nlev=nlev, pixw=pixw)
-    #print("paths_sols =\n", paths_sols)
+    print("paths_sols =\n", paths_sols)
     nsol = len(paths_sols)
     out = {}
     for i in range(0, nsol):
@@ -398,15 +436,63 @@ def plot_solutions_consistency_new(sols, nlev, nsta, pixws):
 
                 if ('Ss' in a and 'Nufft' in b) or ('Nufft' in a and 'Ss' in b):
                     print(f" ... cross rmse: {pixw:4d}, {a:13s} {b:13s} {rmse:.3f}")
-                
+
+    glob_min_rmse = 0.0
     print(glob_min_rmse, glob_max_rmse)
-    #sys.exit(1)
-    
+        
     nplots = len(pixws)
     solseq = ['BluebildCpuSs', 'BippCpuSs', 'BippGpuSs', 'BippCpuNufft', 'BippGpuNufft']
     nsols  = len(solseq)
+
+    ### Individual plots
+    for ip in range(0, nplots):
+
+        plt.figure()
         
-    #fig, axes = plt.subplots(1, nplots, figsize=(12,5))
+        res = pixws[ip]
+        #print(res, cons[res])
+        
+        A = np.zeros([nsols, nsols])
+        
+        for i in range(0, nsols):
+            for j in range(i+1, nsols):
+                nsi = solseq[i]
+                nsj = solseq[j]
+                if rmse := cons.get(res).get(nsi, {}).get(nsj, {}).get('rmse'):
+                    A[i, j] = rmse
+                    A[j, i] = rmse
+                elif rmse := cons.get(res).get(nsj, {}).get(nsi, {}).get('rmse'):
+                    A[i, j] = rmse
+                    A[j, i] = rmse
+        #print(A)
+
+        im = plt.imshow(A, aspect='equal', cmap=plt.get_cmap('Blues'), vmin=glob_min_rmse, vmax=glob_max_rmse)
+
+        cb = plt.colorbar(im)
+        cb.set_label('RMSE [Jy/beam]', rotation=-90, va='bottom', fontsize=16)
+        cb.ax.tick_params(labelsize=14)
+        
+        ca = plt.gca()
+        ca.hlines(y=np.arange(0, nsols)+0.5, xmin=np.full(nsols, 0)-0.5, xmax=np.full(nsols, nsols)-0.5, color="white")
+        ca.vlines(x=np.arange(0, nsols)+0.5, ymin=np.full(nsols, 0)-0.5, ymax=np.full(nsols, nsols)-0.5, color="white")
+        ca.tick_params(top=True, labeltop=True, bottom=False, labelbottom=False)
+        ca.tick_params(left=True)
+        ca.set_yticks(np.arange(0, nsols, 1), solseq, fontsize=16)
+        ca.set_xticks(np.arange(0, nsols, 1), solseq, rotation=45, ha='left', fontsize=16)
+        ca.xaxis.set_label_position('bottom')
+        ca.set_xlabel(f"{res} x {res}", fontsize=16)
+        
+        for dpi in 200, 100:
+            for fmt in '.png', '.pdf':
+                basename = f"consistency_nlev_{nlev}_size_{res}"
+                plot_file = os.path.join(args.out_dir, basename + '_dpi_'+ str(dpi) + fmt)
+                plt.savefig(plot_file, bbox_inches='tight', dpi=dpi)
+                print("-I-", plot_file)
+
+    
+
+    ### Combined plot with all image sizes in it
+    
     fig = plt.figure(figsize=(12,5))
     grid = ImageGrid(fig, 111,
                      nrows_ncols = (1, nplots),
@@ -419,7 +505,7 @@ def plot_solutions_consistency_new(sols, nlev, nsta, pixws):
     for ip in range(0, nplots):
         
         res = pixws[ip]
-        print(res, cons[res])
+        #print(res, cons[res])
         
         A = np.zeros([nsols, nsols])
         
@@ -456,10 +542,14 @@ def plot_solutions_consistency_new(sols, nlev, nsta, pixws):
         #        axes[ip].text(i, j, f"{A[i][j]:.1e}", va='center', ha='center')
         
     #plt.show()
-    png_file = os.path.join(args.out_dir, f"consistency_new_{nlev}.png")
-    fig.savefig(png_file, dpi=600, bbox_inches='tight')
-    print("-I- saved plot", png_file)
+    for dpi in 200, 100:
+        for fmt in '.png', '.pdf':
+            basename = f"consistency_nlev_{nlev}_all_sizes"
+            plot_file = os.path.join(args.out_dir, basename + '_dpi_'+ str(dpi) + fmt)
+            plt.savefig(plot_file, bbox_inches='tight', dpi=dpi)
+            print("-I-", plot_file)
 
+            
 def plot_solutions_consistency(sols, nlev, nsta, pixws):
     cons = {}
     for pixw in sorted(pixws):
@@ -585,7 +675,7 @@ def compare_levels(sols):
     
     to_plot = {}
     tab_lines = []
-    
+    max_range_lines = []
     for sol in sols.keys():
         to_plot[sol] = {}
         x = []
@@ -595,6 +685,7 @@ def compare_levels(sols):
         max_diff_range = -1
         max_diff_range_s = max_diff_range_e = 1E10
         diff_ranges = []
+        max_range_line = 0
         for nsta in sorted(tree['nstas']):
             for pixw in sorted(tree['pixws']):
                 for i in range(0, nlev):
@@ -617,14 +708,16 @@ def compare_levels(sols):
                         min_diff, max_diff = np.amin(diff), np.amax(diff)
                         diff_range = max_diff - min_diff
                         diff_ranges.append(diff_range)
+                        rmse, maxdiff = benchtb.stats_image_diff(dati, datj)
                         if diff_range > max_diff_range:
                             max_diff_range = diff_range
                             max_diff_range_s = min_diff
                             max_diff_range_e = max_diff
+                            max_range_line = f"{sols[sol]['name']:13s} & {pixw:4d} & {levels[i]} & {levels[j]} & [{min_diff:.2e}, {max_diff:.2e}] & {rmse:.2e}"
                         x.append(abs(min_diff))
                         y.append(abs(max_diff))
                         rmse, maxdiff = benchtb.stats_image_diff(dati, datj)
-                        print(f"{sol} {nsta} {pixw:4d} {levels[i]} {levels[j]}: [{min_diff:.3e}, {max_diff:.3e}], range = {diff_range:.3e}, rmse = {rmse:.3e}, max abs diff = {maxdiff:.3e}")
+                        print(f"{sol} {nsta} {pixw:4d} {levels[i]} {levels[j]}: [{min_diff:.2e}, {max_diff:.2e}], range = {diff_range:.2e}, rmse = {rmse:.2e}, max abs diff = {maxdiff:.2e}")
                         if rmse > max_rmse: max_rmse = rmse
                         if rmse < min_rmse: min_rmse = rmse
             to_plot[sol]['x'] = x
@@ -633,6 +726,8 @@ def compare_levels(sols):
         tab_line = f"{sols[sol]['name']:13s} & {np.amin(diff_ranges):.2e} & {np.amax(diff_ranges):.2e} & {np.mean(diff_ranges):.2e} & {np.std(diff_ranges):.2e}"
         print(f" @@@ Difference ranges (min, max, mean, std): {np.amin(diff_ranges):.2e} {np.amax(diff_ranges):.2e} {np.mean(diff_ranges):.2e} {np.std(diff_ranges):.2e}")
         tab_lines.append(tab_line)
+        max_range_lines.append(max_range_line)
+        #print("###", max_range_line)
         
     fig, ax = plt.subplots()
     for sol in to_plot.keys():
@@ -646,6 +741,10 @@ def compare_levels(sols):
     print("-I- saved", png_file)
 
     for line in tab_lines:
+        print(line + " \\\\")
+
+    print("-I- Max ranges found for each solution:")
+    for line in max_range_lines:
         print(line + " \\\\")
 
 
@@ -673,13 +772,12 @@ if __name__ == "__main__":
 
     # Compare same solution over the various energy levels.
     #compare_levels(sols=SOLS)
-
+    
     # Show first solutions are equivalent regardless the number of energy levels considered
     # => only plot for a single clustering
-    for nlev in 1,:
-        plot_solutions_consistency_new(sols=SOLS, nlev=nlev, nsta=0, pixws=tree['pixws'])
-        
-    sys.exit(0)
+    #for nlev in 1,:
+    #    plot_solutions_consistency_new(sols=SOLS, nlev=nlev, nsta=0, pixws=tree['pixws'])
+    #sys.exit(0)
 
     
     #plot_solutions_ranges(nsta=0, pixws=tree['pixws'])
@@ -688,11 +786,11 @@ if __name__ == "__main__":
     
     # Plot tts and speedup factors
     #for nlev in 1, 2, 4, 8:
-    #    plot_wsclean_vs_bipp(nlev=nlev, nsta=0, pixws=tree['pixws'], sols=SOLS)
+    #    plot_tts_and_sf(nlev=nlev, nsta=0, pixws=tree['pixws'], sols=SOLS)
 
-    #for nlev in 1,:
-    #    for pixw in 256, 512, 1024, 2048:
-    #        camemberts(nlev=nlev, nsta=0, pixw=pixw, sol='bgn')
+    for nlev in 1,:
+        for pixw in 256, 512, 1024, 2048:
+            camemberts(nlev=nlev, nsta=0, pixw=pixw, sol='bgn')
     
 
 

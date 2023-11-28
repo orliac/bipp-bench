@@ -14,16 +14,15 @@ export PYTHONPATH="..:$PYTHONPATH"
     #--bench_root /work/ska/orliac/benchmarks/bipp-paper
     #--bench_root /work/ska/papers/bipp/sim_skalow/benchmarks/test64.MS \
 
-# Benchmark v1
+# Benchmark root folder
 root1="/work/ska/papers/bipp/sim_skalow/benchmarks/test64.MS_0-50-1-1_single_0"
-
-# Benchmark v2
 root2="/work/ska/papers/bipp/sim_skalow/benchmarks-2/oskar_9_point_sources_0-50-1-1_single_0"
+root4="/work/ska/papers/bipp/sim_skalow/benchmarks-4/oskar_9_point_sources_0-50-1-1_single_0"
 
-bench_root=${root2}
+bench_root=${root4}
 [ -d ${bench_root} ] || (echo "-E- bench_root ${bench_root} not found." && exit 1)
 
-out_dir="/home/orliac/SKA/epfl-radio-astro/bipp-bench/analysis/plots_bench_v2"
+out_dir="/home/orliac/SKA/epfl-radio-astro/bipp-bench/analysis/plots_bench_v4"
 [ -d ${out_dir} ] || mkdir -pv ${out_dir}
 
 
