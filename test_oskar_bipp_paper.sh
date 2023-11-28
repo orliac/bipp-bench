@@ -14,13 +14,12 @@ set -o errtrace  # trace ERR through 'time command' and other functions
 set -o nounset   ## set -u : exit the script if you try to use an uninitialised variable
 set -o errexit   ## set -e : exit the script if any statement returns a non-true return value
 
-RUN_OSKAR=1
-RUN_CASA=1
-RUN_WSCLEAN=1
+RUN_OSKAR=1; RUN_CASA=1; RUN_WSCLEAN=1
+RUN_OSKAR=0; RUN_CASA=0; RUN_WSCLEAN=0
 RUN_BIPP=1
 RUN_BIPP_PLOT=1
 
-PLOT_ONLY=1
+PLOT_ONLY=0
 if [[ $PLOT_ONLY == 1 ]]; then
     RUN_OSKAR=0; RUN_CASA=0; RUN_WSCLEAN=0; RUN_BIPP=0;
 fi
@@ -34,11 +33,11 @@ do
         p) INSTALL_PYPELINE=1;;
     esac
 done
-echo "INSTALL_BIPP?     $INSTALL_BIPP"
-echo "INSTALL_PYPELINE? $INSTALL_PYPELINE"
+echo "-I- INSTALL_BIPP?     $INSTALL_BIPP"
+echo "-I- INSTALL_PYPELINE? $INSTALL_PYPELINE"
 
 if [[ $RUN_BIPP == 1 && $INSTALL_BIPP == 1 ]]; then
-    sh install_bipp_on_izar.sh orliac
+    sh install_bipp_on_izar.sh --repo orliac #--dsk
 fi    
 if [[ $RUN_BIPP == 1 && $INSTALL_PYPELINE == 1 ]]; then
     sh install_pypeline_on_izar.sh orliac
@@ -51,7 +50,7 @@ VENV=VENV_IZARGCC
 SOFT_DIR=/home/orliac/SKA/epfl-radio-astro/bipp-bench
 
 #IN_DIR=/work/ska/papers/bipp/oskar/test
-MS_BASENAME_=oskar_bipp_paper
+MS_BASENAME_="oskar_9_sources"
 MS_BASENAME=${MS_BASENAME_}.ms
 TELESCOPE="SKALOW"
 
@@ -71,38 +70,25 @@ TELESCOPE="SKALOW"
 #TELESCOPE="LOFAR"
 
 TIME_START_IDX=0
-TIME_END_IDX=100
+TIME_END_IDX=1
 TIME_SLICE_PE=1
 TIME_SLICE_IM=1
 TIME_TAG=${TIME_START_IDX}-${TIME_END_IDX}-${TIME_SLICE_PE}-${TIME_SLICE_IM}
 
-#WSC_SIZE=8192
-#WSC_SIZE=4096
-WSC_SIZE=2048
-#WSC_SIZE=1024
-#WSC_SIZE=512
-#WSC_SIZE=256
-#WSC_SIZE=128
-#WSC_SIZE=32
-#WSC_SIZE=16
+WSC_SIZE=1024
 
 #2673.75 [lambda] * 2.99792458 [m/lambda]
 #maxuvw=5078.13 lambda * 2.99792458 [m/lambda]
 MAXUVW_M=9500000
 
-#FOV_DEG=7
-
 source ~/SKA/ska-spack-env/${SPACK_SKA_ENV}/activate.sh
 source $VENV/bin/activate
 
-#WSC_SCALE=$(python get_scale.py --pixw $WSC_SIZE --fov $FOV_DEG --unit deg)
-
 WSC_SCALE=4
+PRECISION="single"
 
-FOV_DEG=$(python get_fov_deg.py --size $WSC_SIZE --scale $WSC_SCALE)
-
-#OUT_DIR=/work/ska/orliac/debug/oskar_bipp_paper/${WSC_SIZE}/${WSC_SCALE}/${TIME_TAG}
-OUT_DIR=/work/ska/papers/bipp/oskar/9_point_sources/${WSC_SIZE}/${WSC_SCALE}/${TIME_TAG}
+OUT_DIR=/work/ska/orliac/debug/oskar_9s_SS_SP/${WSC_SIZE}/${WSC_SCALE}/${TIME_TAG}_${PRECISION}
+#OUT_DIR=/work/ska/papers/bipp/oskar/9_point_sources/${WSC_SIZE}/${WSC_SCALE}/${TIME_TAG}
 [ ! -d $OUT_DIR ] && mkdir -pv $OUT_DIR
 
 IN_DIR=${OUT_DIR}/oskar
@@ -110,6 +96,7 @@ IN_DIR=${OUT_DIR}/oskar
 
 ### Run OSKAR to produce a MS dataset
 if [[ $RUN_OSKAR == 1 ]]; then
+    
     ROOT_OSKAR=/home/orliac/SKA/oskar/OSKAR-2.8.3
     export OSKAR_INC_DIR=${ROOT_OSKAR}/inst/include
     export OSKAR_LIB_DIR=${ROOT_OSKAR}/inst/lib
@@ -120,28 +107,30 @@ if [[ $RUN_OSKAR == 1 ]]; then
 
     [ ! -d $IN_DIR ] && mkdir -pv $IN_DIR
 
-    INPUT_DIRECTORY="ska1low_new.tm"
+    INPUT_DIRECTORY="/work/ska/papers/bipp/oskar/tms"
+    TM="ska1low_new.tm"
 
-    read -r latlong < oskar/${INPUT_DIRECTORY}/position.txt
+    cp -r ${INPUT_DIRECTORY}/${TM} $IN_DIR
+
+    read -r latlong < ${IN_DIR}/${TM}/position.txt
     IFS=' '
     read -a posarr <<< "$latlong"
 
-    cp -r oskar/$INPUT_DIRECTORY $IN_DIR
-
     OSKAR_SIM=oskar_sim.py
-    cp $OSKAR_SIM $IN_DIR
-
+    cp -v $OSKAR_SIM $IN_DIR
+    
+    echo "-I- IN_DIR = ${IN_DIR}"
     cd $IN_DIR
     python3 $IN_DIR/oskar_sim.py \
             --wsc_size $WSC_SIZE \
             --wsc_scale $WSC_SCALE \
-            --fov_deg $FOV_DEG \
             --num_time_steps $TIME_END_IDX \
-            --input_directory $INPUT_DIRECTORY \
+            --input_directory $IN_DIR/${TM} \
             --telescope_lon ${posarr[0]} \
             --telescope_lat ${posarr[1]} \
             --phase_centre_ra_deg 80.0 \
-            --phase_centre_dec_deg -40.0
+            --phase_centre_dec_deg -40.0 \
+            --out_name $MS_BASENAME_
     cd -
 fi
 
@@ -151,7 +140,8 @@ MS_FILE=${IN_DIR}/${MS_BASENAME}
 
 SIGMA=1.0
 
-CHANNEL_ID=0
+CHANNEL_ID_START=0
+CHANNEL_ID_END=0
 
 BIPP_NLEV=1 # Bluebild number of (positive) energy levels
 BIPP_FNE=0  # Bluebild swith to filter out (=1) or not (=0) negative eigenvalues
@@ -171,7 +161,6 @@ if [[ $RUN_CASA == 1 ]]; then
     python get_ms_timerange.py \
         --ms ${MS_FILE} \
         --data 'DATA' \
-        --channel_id $CHANNEL_ID \
         --time_start_idx ${TIME_START_IDX} \
         --time_end_idx ${TIME_END_IDX} \
         --time_file ${TIME_FILE}
@@ -200,7 +189,7 @@ if [[ $RUN_CASA == 1 ]]; then
         --imsize ${WSC_SIZE} \
         --cell ${WSC_SCALE} \
         --timerange  $CASA_TIMERANGE\
-        --spw '*:'$CHANNEL_ID
+        --spw '*:'$CHANNEL_ID_START'~'$CHANNEL_ID_END
     echo; echo
 
     source ~/SKA/ska-spack-env/${SPACK_SKA_ENV}/activate.sh
@@ -216,7 +205,7 @@ if [[ $RUN_WSCLEAN == 1 ]]; then
     time wsclean \
         -verbose \
         -log-time \
-        -channel-range $CHANNEL_ID $(expr $CHANNEL_ID + 1) \
+        -channel-range $CHANNEL_ID_START $(expr $CHANNEL_ID_END + 1) \
         -size ${WSC_SIZE} ${WSC_SIZE} \
         -scale ${WSC_SCALE}asec \
         -pol I \
@@ -240,9 +229,13 @@ fi
 # proc_unit: 'cpu', 'gpu', 'none'
 # ------------------------------------------------------------------------------
 combs=('pypeline_ss_none' 'bipp_ss_cpu' 'bipp_ss_gpu' 'bipp_nufft_cpu' 'bipp_nufft_gpu')
-combs=('bipp_ss_cpu' 'bipp_ss_gpu' 'bipp_nufft_cpu' 'bipp_nufft_gpu')
-combs=('bipp_nufft_gpu' 'bipp_nufft_cpu' 'bipp_ss_gpu' 'bipp_ss_cpu')
-combs=('bipp_nufft_gpu')
+#combs=('pypeline_ss_none')
+combs=('bipp_nufft_gpu' 'bipp_ss_gpu')
+
+# List of filters to use separated with a "-" (underscore used in naming)
+# STD SQRT INV INV_SQ SQ LSQ
+INT_FILTERS="LSQ"
+SEN_FILTERS=""
 
 for comb in ${combs[@]}; do
 
@@ -274,7 +267,7 @@ for comb in ${combs[@]}; do
           --output_directory ${OUT_DIR} \
           --cluster izar \
           --processing_unit $proc_unit --compiler gcc \
-          --precision single \
+          --precision ${PRECISION} \
           --package ${package} \
           --nlev ${BIPP_NLEV} \
           --pixw ${WSC_SIZE} --wsc_scale ${WSC_SCALE} \
@@ -283,9 +276,13 @@ for comb in ${combs[@]}; do
           --time_start_idx ${TIME_START_IDX} --time_end_idx ${TIME_END_IDX} \
           --nufft_eps 0.00001 \
           --algo ${algo} \
+          --int_filters ${INT_FILTERS} \
+          --sen_filters ${SEN_FILTERS} \
           --filter_negative_eigenvalues ${BIPP_FNE} \
           --wsc_log ${WSCLEAN_LOG} \
-          --channel_id ${CHANNEL_ID} \
+          --channel_id_start ${CHANNEL_ID_START} \
+          --channel_id_end   $(expr $CHANNEL_ID_END + 1) \
+          --check_alt_gram \
           --outname ${OUTNAME} \
           |& tee ${BIPP_LOG}
   fi
