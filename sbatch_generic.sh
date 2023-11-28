@@ -81,9 +81,19 @@ TIME_END_IDX="$(get_option_value "$input_line" "--time_end_idx")"
 WSC_SIZE="$(get_option_value "$input_line" "--pixw")"
 WSC_SCALE="$(get_option_value "$input_line" "--wsc_scale")"
 MS_FILE="$(get_option_value "$input_line" "--ms_file")"
-CHANNEL_ID="$(get_option_value "$input_line" "--channel_id")"
+CHANNEL_ID_START="$(get_option_value "$input_line" "--channel_id_start")"
+CHANNEL_ID_END="$(get_option_value "$input_line" "--channel_id_end")"
 OUTNAME="$(get_option_value "$input_line" "--outname")"
 OUT_DIR="$(get_option_value "$input_line" "--output_directory")"
+TELESCOPE="$(get_option_value "$input_line" "--telescope")"
+PRECISION="$(get_option_value "$input_line" "--precision")"
+TIME_SLICE_PE="$(get_option_value "$input_line" "--time_slice_pe")"
+TIME_SLICE_IM="$(get_option_value "$input_line" "--time_slice_im")"
+BIPP_NLEV="$(get_option_value "$input_line" "--nlev")"
+BIPP_FNE="$(get_option_value "$input_line" "--filter_negative_eigenvalues")"
+NUFFT_EPS="$(get_option_value "$input_line" "--nufft_eps")"
+PROC_UNIT="$(get_option_value "$input_line" "--processing_unit")"
+
 echo "-I- OUT_DIR = $OUT_DIR"
 [ ! -d $OUT_DIR ] && mkdir -pv $OUT_DIR
 cd $OUT_DIR
@@ -104,6 +114,8 @@ set -o errexit   ## set -e : exit the script if any statement returns a non-true
 RUN_OSKAR=1
 RUN_CASA=1
 RUN_WSCLEAN=1
+RUN_BIPP=1
+RUN_BIPP_PLOT=1
 
 CASA_OUT=dirty_casa
 CASA_LOG=dirty_casa.log
@@ -111,6 +123,9 @@ CASA_TIME_LOG=dirty_casa_time.log
 
 IN_DIR=${OUT_DIR}/oskar
 sky_opt=''
+
+echo "!!!!!!!!!!!!!!!!!!!!!!!!!!!!! remove that !!!!!!!!!!!!!!!!!!!!!!!!"
+MS_BASENAME_="oskar_9_sources"
 
 ### Run OSKAR to produce a MS dataset
 if [[ $RUN_OSKAR == 1 ]]; then
@@ -153,7 +168,7 @@ if [[ $RUN_OSKAR == 1 ]]; then
             --telescope_lat ${posarr[1]} \
             --phase_centre_ra_deg 80.0 \
             --phase_centre_dec_deg -40.0 \
-            --out_name $MS_BASENAME_ 
+            --out_name $MS_BASENAME_
     cd -
 
     deactivate
@@ -170,14 +185,14 @@ if [[ $RUN_OSKAR == 1 ]]; then
     
 else
     echo "-E- FIX ME"
-    exit 1
-    MS_BASENAME=$(basename -- "$MS_FILE")
-    ORIGINAL_MS_FILE=$SOL_DIR/$MS_BASENAME
-    MS_FILE=${OUT_DIR}/$MS_BASENAME
+    #exit 1
+    #MS_BASENAME=$(basename -- "$MS_FILE")
+    #ORIGINAL_MS_FILE=$SOL_DIR/$MS_BASENAME
+    #MS_FILE=${OUT_DIR}/$MS_BASENAME
 fi
 
-[ -d $ORIGINAL_MS_FILE ] || (echo "-E- MS dataset $ORIGINAL_MS_FILE not found" && exit 1)
-echo "-I- ORIGINAL_MS_FILE: $ORIGINAL_MS_FILE to be copied here . " `pwd` 
+#[ -d $ORIGINAL_MS_FILE ] || (echo "-E- MS dataset $ORIGINAL_MS_FILE not found" && exit 1)
+#echo "-I- ORIGINAL_MS_FILE: $ORIGINAL_MS_FILE to be copied here . " `pwd` 
 
 
 if [[ $RUN_CASA == 1 ]]; then
@@ -201,7 +216,6 @@ if [[ $RUN_CASA == 1 ]]; then
     python $SOL_DIR/get_ms_timerange.py \
         --ms ${MS_FILE} \
         --data 'DATA' \
-        --channel_id ${CHANNEL_ID} \
         --time_start_idx ${TIME_START_IDX} \
         --time_end_idx ${TIME_END_IDX} \
         --time_file ${TIME_FILE}
@@ -224,6 +238,10 @@ if [[ $RUN_CASA == 1 ]]; then
     [ -f $CASA ] || (echo "Fatal. Could not find $CASA" && exit 1)
     which $CASA
     $CASA --version
+
+    echo "CHANNEL_ID_END = $CHANNEL_ID_END"
+    CASA_CHANNEL_ID_END=$(($CHANNEL_ID_END-1))
+    echo "CASA_CHANNEL_ID_END = $CASA_CHANNEL_ID_END"
     
     casa_cmd="$CASA \
         --nogui \
@@ -236,7 +254,7 @@ if [[ $RUN_CASA == 1 ]]; then
         --imsize ${WSC_SIZE} \
         --cell ${WSC_SCALE} \
         --timerange ${CASA_TIMERANGE} \
-        --spw *:${CHANNEL_ID}"
+        --spw *:${CHANNEL_ID_START}~${CASA_CHANNEL_ID_END}"
     echo
     echo "casa_cmd:"
     echo $casa_cmd
@@ -284,10 +302,12 @@ if [[ $RUN_WSCLEAN == 1 ]]; then
 
     cp -rf  ${ORIGINAL_MS_FILE} ${MS_FILE}
 
+    # watch out + 1 already in $line !!!
+    
     wsclean_cmd="wsclean \
         -verbose \
         -log-time \
-        -channel-range $CHANNEL_ID $(expr $CHANNEL_ID + 1) \
+        -channel-range $CHANNEL_ID_START $CHANNEL_ID_END \
         -size ${WSC_SIZE} ${WSC_SIZE} \
         -scale ${WSC_SCALE}asec \
         -pol I \
@@ -310,7 +330,7 @@ if [[ $RUN_WSCLEAN == 1 ]]; then
           --bb_json ${WSCLEAN_OUT}.json \
           --bb_time_log ${WSCLEAN_TIME_LOG}
 
-    # clean
+    # clean -- OUTDATED !!!!!!!!!!!!!!!
     if [[ 1 == 0 ]]; then
         cp -r $SOL_DIR/$MS_BASENAME .
         time wsclean \
@@ -344,57 +364,86 @@ echo
 BLUEBILD_LOG=$OUT_DIR/${OUTNAME}_bluebild.log
 BLUEBILD_TIME_LOG=$OUT_DIR/${OUTNAME}_bluebild_time.log
 
-export CUDA_ENABLE_COREDUMP_ON_EXCEPTION=1
+if [[ $RUN_BIPP == 1 ]]; then
+    export CUDA_ENABLE_COREDUMP_ON_EXCEPTION=1
 
-echo "### input_line = " $input_line
-input_line="${input_line} --ms_file ${MS_FILE}"
-echo "### input_line = " $input_line
+    echo "### input_line = " $input_line
+    input_line="${input_line} --ms_file ${MS_FILE}"
+    echo "### input_line = " $input_line
 
-py_script=${pipeline}_${algo}_${package}.py
+    py_script=${pipeline}_${algo}_${package}.py
 
-cp -rf  ${ORIGINAL_MS_FILE} ${MS_FILE}
+    cp -rf  ${ORIGINAL_MS_FILE} ${MS_FILE}
     
-/usr/bin/time \
-    --output=$BLUEBILD_TIME_LOG \
-    --portability python -u ${py_script} ${input_line} | tee ${BLUEBILD_LOG}
+    /usr/bin/time \
+        --output=$BLUEBILD_TIME_LOG \
+        --portability python -u ${py_script} ${input_line} | tee ${BLUEBILD_LOG}
 
-python $SOL_DIR/add_time_stats_to_bluebild_json.py \
-    --bb_json $OUT_DIR/${OUTNAME}_stats.json \
-    --bb_time_log ${BLUEBILD_TIME_LOG}
+    python $SOL_DIR/add_time_stats_to_bluebild_json.py \
+           --bb_json $OUT_DIR/${OUTNAME}_stats.json \
+           --bb_time_log ${BLUEBILD_TIME_LOG}
 
-#time -p (cuda-gdb --args python -u ${pipeline}_${algo}_${package}.py $input_line | tee ${BLUEBILD_LOG}) 2> ${BLUEBILD_TIME_LOG}
+    #time -p (cuda-gdb --args python -u ${pipeline}_${algo}_${package}.py $input_line | tee ${BLUEBILD_LOG}) 2> ${BLUEBILD_TIME_LOG}
 
-echo
-echo "cat ${BLUEBILD_TIME_LOG}"
-echo "=========================================================================="
-cat ${BLUEBILD_TIME_LOG}
-echo "=========================================================================="
+    echo
+    echo "cat ${BLUEBILD_TIME_LOG}"
+    echo "=========================================================================="
+    cat ${BLUEBILD_TIME_LOG}
+    echo "=========================================================================="
+fi
 
 
-echo =============================================================================
-echo Generate plots
-echo =============================================================================
-echo
+if [[ $RUN_BIPP_PLOT == 1 ]]; then
+    
+    echo =============================================================================
+    echo Generate plots
+    echo =============================================================================
+    echo
 
-cd $OUT_DIR
+    cd $OUT_DIR
 
-PLOTS_CMD=""
-PLOTS_CMD+="python $SOL_DIR/plots.py"
-PLOTS_CMD+=" --bb_grid   ${OUTNAME}_I_lsq_eq_grid.npy"
-PLOTS_CMD+=" --bb_data   ${OUTNAME}_I_lsq_eq_data.npy"
-PLOTS_CMD+=" --bb_json   ${OUTNAME}_stats.json"
-PLOTS_CMD+=" --outdir ${OUT_DIR}"
-PLOTS_CMD+=" --outname ${OUTNAME}"
-PLOTS_CMD+=" --flip_lr"
-PLOTS_CMD+=" --wsc_fits  ${WSCLEAN_OUT}-dirty.fits"
-PLOTS_CMD+=" --wsc_log   ${WSCLEAN_LOG}"
-PLOTS_CMD+=" --casa_fits ${CASA_OUT}.image.fits"
-PLOTS_CMD+=" --casa_log  ${CASA_LOG}"
-PLOTS_CMD+=" --wsc_size ${WSC_SIZE} --wsc_scale ${WSC_SCALE}"
-PLOTS_CMD+=" ${sky_opt}"
-$PLOTS_CMD
+    comb=${pipeline}_${algo}_${package}
+    
+    OUTNAME_NEW=skalow_oskar_9_sources_${comb}
+    OUTNAME_NEW+="_${PROC_UNIT}_${TELESCOPE}_${PRECISION}"
+    OUTNAME_NEW+="_sidx_${TIME_START_IDX}_eidx_${TIME_END_IDX}_slipe_${TIME_SLICE_PE}_sliim_${TIME_SLICE_IM}"
+    OUTNAME_NEW+="_nlev_${BIPP_NLEV}_fne_${BIPP_FNE}_size_${WSC_SIZE}_sca_${WSC_SCALE}"
+    if [ $algo == 'nufft' ]; then
+        OUTNAME_NEW+="_nuffteps_${NUFFT_EPS}"
+    fi
+    echo "OUTNAME = ${OUTNAME}"
+    
+    sky_file=${IN_DIR}/${MS_BASENAME_}.sky
+    sky_opt=''
+    [ -f $sky_file ] && sky_opt="--sky_file $sky_file"
+    echo sky_opt = $sky_opt
 
-cd -
+    PLOTS_CMD=""
+    PLOTS_CMD+="python $SOL_DIR/plots.py"
+    PLOTS_CMD+=" --bb_grid   ${OUTNAME}_I_lsq_eq_grid.npy"
+    PLOTS_CMD+=" --bb_data   ${OUTNAME}_I_lsq_eq_data.npy"
+    PLOTS_CMD+=" --bb_json   ${OUTNAME}_stats.json"
+    PLOTS_CMD+=" --outdir ${OUT_DIR}"
+    PLOTS_CMD+=" --flip_lr"
+    PLOTS_CMD+=" --wsc_fits  ${WSCLEAN_OUT}-dirty.fits"
+    PLOTS_CMD+=" --wsc_log   ${WSCLEAN_LOG}"
+    PLOTS_CMD+=" --casa_fits ${CASA_OUT}.image.fits"
+    PLOTS_CMD+=" --casa_log  ${CASA_LOG}"
+    PLOTS_CMD+=" --wsc_size ${WSC_SIZE} --wsc_scale ${WSC_SCALE}"
+    PLOTS_CMD+=" ${sky_opt}"
+    PLOTS_CMD+=" --outname ${OUTNAME_NEW}"
+    $PLOTS_CMD
+
+    if [ -f $sky_file ]; then
+        python $SOL_DIR/analyze_sky.py \
+               --sky_file ${OUTNAME_NEW}.sky \
+               --wsc_size ${WSC_SIZE} \
+               --wsc_scale ${WSC_SCALE} \
+               --outdir   ${OUT_DIR}
+    fi
+    
+    cd -
+fi
 
 deactivate
 source ${ENV_SPACK}/deactivate.sh
