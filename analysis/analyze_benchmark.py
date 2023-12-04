@@ -236,14 +236,23 @@ def plot_tts_and_sf(nsta, nlev, pixws, sols):
             specs = benchtb.get_solution_specs_from_path(path_pixw, args.bench_root)
             json_base = os.path.join(path_pixw, f"{args.telescope}_{specs['package']}_{specs['algo']}_{specs['proc_unit']}_0")
             bipp_json = json_base + "_stats.json"
+            print(bipp_json)
             bipp_stats = benchtb.read_json_file(bipp_json)
+            print(bipp_stats)
             casa_stats = benchtb.read_dirty_casa_json_stat_file(path_pixw)
             wsc_stats  = benchtb.read_dirty_wsclean_json_stat_file(path_pixw)
             #print(f"   -> {bipp_stats}")
             #print(f"   -> {casa_stats}")
             #print(f"   -> {wsc_stats}")
             if bipp_stats is not None:
-                my_sols[sol]['tts']['bipp'].append((pixw, bipp_stats['time']['real']))
+                real  = bipp_stats['time']['real']
+                tot   = bipp_stats['timings']['tot']
+                ifpe_plot = bipp_stats['timings']['ifpe_plot']
+                ifim_plot = bipp_stats['timings']['ifim_plot']
+                print(f"real = {real:.1f} vs tot = {tot:.1f}, diff = {real-tot:.1f}, {ifpe_plot:.1f}, {ifim_plot:.1f}")
+                print("-W- USING tot - (plot times) instead of real !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!")
+                #my_sols[sol]['tts']['bipp'].append((pixw, bipp_stats['time']['real']))
+                my_sols[sol]['tts']['bipp'].append((pixw, tot - ifpe_plot - ifim_plot))              
             if casa_stats is not None:
                 #my_sols[sol]['tts']['casa'].append((pixw, casa_stats['timings']['t_tclean']))
                 #all_casa[pixw].append(casa_stats['timings']['t_tclean'])
@@ -259,6 +268,7 @@ def plot_tts_and_sf(nsta, nlev, pixws, sols):
                 if my_sols[sol]['tts'][pkg][-1][1] < t_min: t_min = my_sols[sol]['tts'][pkg][-1][1]
                 if my_sols[sol]['tts'][pkg][-1][1] > t_max: t_max = my_sols[sol]['tts'][pkg][-1][1]
 
+    #sys.exit(0)
 
     print("#### Times to solutions")
     #print(my_sols)
@@ -465,10 +475,10 @@ def plot_solutions_consistency_new(sols, nlev, nsta, pixws):
                     A[i, j] = rmse
                     A[j, i] = rmse
         #print(A)
+        
+        im = plt.imshow(A, aspect='equal', cmap=plt.get_cmap('Blues'), vmin=0, vmax=np.max(A))
 
-        im = plt.imshow(A, aspect='equal', cmap=plt.get_cmap('Blues'), vmin=glob_min_rmse, vmax=glob_max_rmse)
-
-        cb = plt.colorbar(im)
+        cb = plt.colorbar(im, format='%.1e')
         cb.set_label('RMSE [Jy/beam]', rotation=-90, va='bottom', fontsize=16)
         cb.ax.tick_params(labelsize=14)
         
@@ -523,7 +533,7 @@ def plot_solutions_consistency_new(sols, nlev, nsta, pixws):
         print(A)
         im = grid[ip].imshow(A, aspect='equal', cmap=plt.get_cmap('Blues'), vmin=glob_min_rmse, vmax=glob_max_rmse)
         if ip == nplots-1:
-            cb = plt.colorbar(im, cax=grid.cbar_axes[0])
+            cb = plt.colorbar(im, cax=grid.cbar_axes[0], format='%.1e')
             cb.set_label('RMSE [Jy/beam]', rotation=-90, va='bottom')
         grid[ip].hlines(y=np.arange(0, nsols)+0.5, xmin=np.full(nsols, 0)-0.5, xmax=np.full(nsols, nsols)-0.5, color="white")
         grid[ip].vlines(x=np.arange(0, nsols)+0.5, ymin=np.full(nsols, 0)-0.5, ymax=np.full(nsols, nsols)-0.5, color="white")
@@ -713,7 +723,7 @@ def compare_levels(sols):
                             max_diff_range = diff_range
                             max_diff_range_s = min_diff
                             max_diff_range_e = max_diff
-                            max_range_line = f"{sols[sol]['name']:13s} & {pixw:4d} & {levels[i]} & {levels[j]} & [{min_diff:.2e}, {max_diff:.2e}] & {rmse:.2e}"
+                            max_range_line = f"\\texttt{{{sols[sol]['name']:13s}}} & {pixw:4d} & {levels[i]} \& {levels[j]} & [{min_diff:.1e}, {max_diff:.1e}] & {rmse:.1e}"
                         x.append(abs(min_diff))
                         y.append(abs(max_diff))
                         rmse, maxdiff = benchtb.stats_image_diff(dati, datj)
@@ -723,7 +733,7 @@ def compare_levels(sols):
             to_plot[sol]['x'] = x
             to_plot[sol]['y'] = y
         print(f" @@@ min, max rmse for {sols[sol]['name']} = {min_rmse:.3e}, {max_rmse:.3e}  max_range = [{max_diff_range_s:.2e}, {max_diff_range_e:.2e}] = {max_diff_range:.2e}")
-        tab_line = f"{sols[sol]['name']:13s} & {np.amin(diff_ranges):.2e} & {np.amax(diff_ranges):.2e} & {np.mean(diff_ranges):.2e} & {np.std(diff_ranges):.2e}"
+        tab_line = f"\\texttt{{{sols[sol]['name']:13s}}} & {np.amin(diff_ranges):.2e} & {np.amax(diff_ranges):.2e} & {np.mean(diff_ranges):.2e} & {np.std(diff_ranges):.2e}"
         print(f" @@@ Difference ranges (min, max, mean, std): {np.amin(diff_ranges):.2e} {np.amax(diff_ranges):.2e} {np.mean(diff_ranges):.2e} {np.std(diff_ranges):.2e}")
         tab_lines.append(tab_line)
         max_range_lines.append(max_range_line)
@@ -770,30 +780,30 @@ if __name__ == "__main__":
     SOLS = ALL_SOLS
     print("SOLS =\n", SOLS)
 
-    # Compare same solution over the various energy levels.
-    #compare_levels(sols=SOLS)
-    
-    # Show first solutions are equivalent regardless the number of energy levels considered
-    # => only plot for a single clustering
-    #for nlev in 1,:
-    #    plot_solutions_consistency_new(sols=SOLS, nlev=nlev, nsta=0, pixws=tree['pixws'])
-    #sys.exit(0)
+    if 1 == 0:
+        # Compare same solution over the various energy levels.
+        compare_levels(sols=SOLS)
 
-    
-    #plot_solutions_ranges(nsta=0, pixws=tree['pixws'])
-    #sys.exit(1)
-    
-    
-    # Plot tts and speedup factors
-    #for nlev in 1, 2, 4, 8:
-    #    plot_tts_and_sf(nlev=nlev, nsta=0, pixws=tree['pixws'], sols=SOLS)
+    if 1 == 0:
+        # Show first solutions are equivalent regardless the number of energy levels considered
+        # => only plot for a single clustering
+        for nlev in 1,:
+            plot_solutions_consistency_new(sols=SOLS, nlev=nlev, nsta=0, pixws=tree['pixws'])
 
-    for nlev in 1,:
-        for pixw in 256, 512, 1024, 2048:
-            camemberts(nlev=nlev, nsta=0, pixw=pixw, sol='bgn')
+    if 1 == 0:
+        # Not used in BIPP paper
+        plot_solutions_ranges(nsta=0, pixws=tree['pixws'])
+
+    if 1 == 1:
+        # Plot tts and speedup factors
+        for nlev in 1, 2, 4, 8:
+            plot_tts_and_sf(nlev=nlev, nsta=0, pixws=tree['pixws'], sols=SOLS)
+
+    if 1 == 1:
+        for nlev in 1,:
+            for pixw in 256, 512, 1024, 2048:
+                camemberts(nlev=nlev, nsta=0, pixw=pixw, sol='bgn')
     
-
-
 """
 def analyze_triplet_nsta_nlev_pixw(bench_root, nsta, nlev, pixw):
         paths_sols = benchtb.get_list_of_solutions(bench_root=bench_root, nsta=nsta, nlev=nlev, pixw=pixw)
