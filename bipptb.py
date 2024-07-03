@@ -195,8 +195,9 @@ def check_args(args_in):
                         required=False, default=False, action='store_true')
     parser.add_argument("--dump_tests_json", help="Dump BIPP JSON input and output files for tests",
                         required=False, default=False, action='store_true')
+    parser.add_argument("--sort_time", help="Whether to sort data on time when reading an MS file",
+                        type=lambda x: bool(strtobool(x)), required=False, default=True)
     
-
     args = parser.parse_args()
     """
     if args.outdir:
@@ -220,11 +221,6 @@ def check_args(args_in):
     if args.package == "bipp" and args.processing_unit == 'none':
         print('-E- bipp processing unit cannot be none.')
         sys.exit(1)
-
-    if args.package == "pypeline" and args.sigma == 1.0:
-        print('-W- pypeline reset of args.sigma from 1.0 to 0.99999')
-        args.sigma = 0.99999
-        args.sigma = 1.0
 
     args.nbits = 32 if args.precision == 'single' else 64
 
@@ -259,6 +255,7 @@ def check_args(args_in):
     print("-I- Time end idx   =", args.time_end_idx)
     print("-I- Time slice PE  =", args.time_slice_pe)
     print("-I- Time slice IM  =", args.time_slice_im)
+    print("-I- Sort on time   =", args.sort_time)
     print("-I- sigma          =", args.sigma)
     print("-I- NUFFT epsilon  =", args.nufft_eps)
     print("-I- Output dir.    =", args.output_directory)
