@@ -13,9 +13,9 @@ import math
 
 def check_args(args_in):
     parser = argparse.ArgumentParser(args_in)
-    parser.add_argument("--sky_file", help="Json file containing sky information", required=True)
-    parser.add_argument("--outdir",   help="Output directory", required=True)
-    parser.add_argument("--wsc_size", help="WSClean size paramater", required=True, type=int)
+    parser.add_argument("--sky_file",  help="Json file containing sky information", required=True)
+    parser.add_argument("--outdir",    help="Output directory", required=True)
+    parser.add_argument("--wsc_size",  help="WSClean size paramater", required=True, type=int)
     parser.add_argument("--wsc_scale", help="WSClean scale paramater", required=True, type=int)
     args = parser.parse_args()
     if not os.path.isfile(args.sky_file):
@@ -191,9 +191,10 @@ if __name__ == "__main__":
         if not add_label and pt == 'comb':
             axes[1].set_ylabel('', fontsize=15)
         if pt == 'comb':
-            axes[1].set_ylim(-0.2, 3.1)
+            axes[1].set_ylim(-0.5, 0.5)
         else:
-            axes[1].set_ylim(-0.2, max_dist)
+            #axes[1].set_ylim(-0.2, max_dist)
+            axes[1].set_ylim(-0.5, 0.5)
             
         axes[1].get_legend().remove()
 
@@ -207,6 +208,6 @@ if __name__ == "__main__":
     
         for dpi in 100,:
             for fmt in '.png', '.pdf':
-                plot_file = os.path.join(args.outdir, basename + '_rec_sky_dpi_'+ str(dpi) + fmt)        
+                plot_file = os.path.join(args.outdir, basename + '_rec_sky_dpi_XXX_' + str(dpi) + fmt)        
                 plt.savefig(plot_file, bbox_inches='tight', dpi=dpi)
                 print("-I-", plot_file)
