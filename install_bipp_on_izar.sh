@@ -51,7 +51,8 @@ git branch
 cd -
 
 # Activate Spack environment for izar
-MY_SPACK_ENV=bipp-izar-gcc
+#MY_SPACK_ENV=bipp-izar-gcc
+MY_SPACK_ENV=bizar-0211
 source ~/SKA/ska-spack-env/${MY_SPACK_ENV}/activate.sh
 python -V
 
@@ -59,9 +60,13 @@ python -V
 python -m pip uninstall -y ${PACKAGE}
 
 # Create a Python virtual environment
-VENV=VENV_IZARGCC
+VENV=VENV_IZARGCC_PM
 python -m venv $VENV
 source $VENV/bin/activate
+
+#python -m pip install astropy
+#exit 0
+
 
 if [[ $DSK == 1 ]]; then
     SKBUILD=${PACKAGE_ROOT}/_skbuild;

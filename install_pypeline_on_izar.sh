@@ -59,7 +59,7 @@ fi
 # Do not pull automatically!
 
 # Activate Spack environment for izar
-MY_SPACK_ENV=bipp-izar-gcc
+MY_SPACK_ENV=bizar-0211
 source ~/SKA/ska-spack-env/${MY_SPACK_ENV}/activate.sh
 python -V
 
@@ -68,9 +68,13 @@ python -m pip uninstall -y bluebild
 python -m pip uninstall -y pypeline
 
 # Create a Python virtual environment
-VENV=VENV_IZARGCC
+VENV=VENV_IZARGCC_PM
 python -m venv $VENV
 source $VENV/bin/activate
+python -m pip install imot_tools
+python -m pip install plotly
+echo "early exit!!!"
+exit 0
 
 # Activate this block to install from scratch
 if [ 1 == 0 ]; then 
