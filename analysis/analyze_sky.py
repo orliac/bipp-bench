@@ -65,11 +65,13 @@ if __name__ == "__main__":
         plot[sol] = {}
         
         for source in data:
-            #print(source)
+            #print("source =", source)
             dx = source['simulated']['px'] - ref_px
             dy = source['simulated']['py'] - ref_py
             dist_to_center = int(np.sqrt(dx*dx + dy*dy))
             loss = (source['recovered']['intensity'] - source['simulated']['intensity']) / source['simulated']['intensity'] * -100
+            if sol == 'Bluebild':
+                print(f"source bb: {source['simulated']['intensity']} -> {source['recovered']['intensity']}")
             recovery = 100 - loss
             if recovery > max_recovery:
                 max_recovery = recovery
